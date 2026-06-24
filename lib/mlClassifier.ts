@@ -40,8 +40,10 @@ export interface ClassificationResult {
   classIdx: number;
   probs: number[];
   rms: number;
-  distance: number; // rough estimate, feet
-  bearing: number; // -1 = unknown (mono mic in MVP)
+  distance: number; // rough point estimate, feet
+  distanceMin: number; // lower bound of the (wide) range band, feet
+  distanceMax: number; // upper bound of the (wide) range band, feet
+  bearing: number; // -1 = unknown (single mic: no direction-finding)
   timestamp: number;
 }
 
@@ -82,13 +84,24 @@ export function forwardMLP(x: ArrayLike<number>, model: CorvusModel): number[] {
   return a;
 }
 
+// Best-effort per-platform reference loudness: the broadband RMS we'd expect
+// from that drone at refDistanceFeet. These are UNCALIBRATED estimates ordered
+// by rotor size/SPL (bigger props -> louder) until a measured flight refines
+// them. Used only for the rough inverse-square range estimate.
+const REF_RMS_BY_LABEL: Record<string, number> = {
+  'DJI Phantom': 0.060, // large props, loudest
+  'Skydio X2': 0.045,
+  'Parrot Anafi': 0.035, // smaller/quieter
+  Unknown: 0.050,
+};
+const DEFAULT_REF_RMS = 0.05;
+
 export class DroneClassifier {
   private model: CorvusModel;
   private cfg: DspConfig;
   private confidenceThreshold = 0.7;
   // SPL calibration for the rough distance estimate
   private refDistanceFeet = 100;
-  private refRms = 0.05; // RMS of a drone at ~100 ft (calibrate per device)
 
   constructor(model: CorvusModel) {
     this.model = model;
@@ -135,23 +148,31 @@ export class DroneClassifier {
     for (let i = 0; i < samples.length; i++) sq += (samples[i] as number) * (samples[i] as number);
     const rms = Math.sqrt(sq / Math.max(1, samples.length));
 
-    const distance = this.estimateDistance(rms);
+    const label = this.model.labels[classIdx];
+    const distance = this.estimateDistance(rms, label);
 
     return {
-      label: this.model.labels[classIdx],
+      label,
       confidence,
       classIdx,
       probs,
       rms,
       distance,
-      bearing: -1, // mono mic: bearing not available in MVP
+      // Acoustic range from loudness is inherently imprecise (drone throttle,
+      // wind, and the phone's auto-gain all move RMS), so we report a wide band
+      // rather than false precision. ~0.65x..1.55x of the point estimate.
+      distanceMin: Math.max(30, Math.round(distance * 0.65)),
+      distanceMax: Math.min(1500, Math.round(distance * 1.55)),
+      bearing: -1, // single mic: no direction-finding
       timestamp: Date.now(),
     };
   }
 
-  private estimateDistance(rms: number): number {
-    // Inverse-square: louder -> closer. Calibrate refRms/refDistanceFeet per device.
-    const d = this.refDistanceFeet * Math.sqrt(this.refRms / Math.max(rms, 1e-6));
+  private estimateDistance(rms: number, label?: string): number {
+    // Inverse-square: louder -> closer. Uses a per-drone reference loudness
+    // (best-effort until a measured flight calibrates it).
+    const refRms = (label && REF_RMS_BY_LABEL[label]) || DEFAULT_REF_RMS;
+    const d = this.refDistanceFeet * Math.sqrt(refRms / Math.max(rms, 1e-6));
     return Math.max(30, Math.min(1500, d));
   }
 }

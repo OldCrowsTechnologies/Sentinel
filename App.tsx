@@ -23,6 +23,7 @@ export default function App() {
   const [modelReady, setModelReady] = useState(false);
   const [statusText, setStatus] = useState('Initializing…');
   const [level, setLevel] = useState(0);
+  const [peakLevel, setPeakLevel] = useState(0); // peak-hold for the rotate-to-peak locate aid
   const [threats, setThreats] = useState<Threat[]>([]);
   const [lastAlert, setLastAlert] = useState<AlertEvent | null>(null);
   const [settings, setSettings] = useState<SettingsState>({
@@ -69,7 +70,9 @@ export default function App() {
     const tracker = trackerRef.current;
     if (!clf || !tracker) return;
 
-    setLevel(Math.min(1, rms * 12));
+    const lvl = Math.min(1, rms * 12);
+    setLevel(lvl);
+    setPeakLevel((p) => Math.max(p, lvl)); // hold the loudest reading for rotate-to-peak
 
     const result = clf.classifySamples(win);
     const label = rms < SILENCE_RMS ? 'None' : result.label;
@@ -109,6 +112,7 @@ export default function App() {
       try {
         trackerRef.current?.setThresholds({ minConfidence: settings.alertConfidence });
         sessionStartRef.current = Date.now();
+        setPeakLevel(0);
         await audio.startMonitoring(onWindow);
         setMonitoring(true);
         setStatus('Monitoring — listening for airborne contacts…');
@@ -156,6 +160,8 @@ export default function App() {
           modelReady={modelReady}
           statusText={statusText}
           level={level}
+          peakLevel={peakLevel}
+          onResetPeak={() => setPeakLevel(0)}
           threats={threats}
           lastAlert={lastAlert}
           onToggle={toggle}

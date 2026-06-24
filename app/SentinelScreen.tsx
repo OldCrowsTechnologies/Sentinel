@@ -8,6 +8,8 @@ export interface SentinelProps {
   modelReady: boolean;
   statusText: string;
   level: number; // 0..1 input level meter
+  peakLevel: number; // 0..1 peak-hold for the rotate-to-peak locate aid
+  onResetPeak: () => void;
   threats: Threat[];
   lastAlert: AlertEvent | null;
   onToggle: () => void;
@@ -17,8 +19,12 @@ export interface SentinelProps {
 
 const sevColor = (d: number) => (d < 150 ? COLORS.danger : d < 300 ? COLORS.warning : COLORS.tealLight);
 
+// Range is a loudness estimate, so show a wide band (matches mlClassifier's
+// distanceMin/Max factors) rather than a single false-precision number.
+const rangeBand = (d: number) => `~${Math.max(30, Math.round(d * 0.65))}–${Math.min(1500, Math.round(d * 1.55))} ft`;
+
 export default function SentinelScreen(props: SentinelProps) {
-  const { isMonitoring, modelReady, statusText, level, threats, lastAlert } = props;
+  const { isMonitoring, modelReady, statusText, level, peakLevel, threats, lastAlert } = props;
   return (
     <View style={s.container}>
       <View style={s.header}>
@@ -32,7 +38,27 @@ export default function SentinelScreen(props: SentinelProps) {
 
       <View style={s.meterTrack}>
         <View style={[s.meterFill, { width: `${Math.min(100, Math.round(level * 100))}%` }]} />
+        <View style={[s.peakMarker, { left: `${Math.min(99, Math.round(peakLevel * 100))}%` }]} />
       </View>
+
+      {isMonitoring && (
+        <View style={s.locate}>
+          <View style={s.itemRow}>
+            <Text style={s.locateTitle}>LOCATE · rotate to peak</Text>
+            <TouchableOpacity onPress={props.onResetPeak}>
+              <Text style={s.locateReset}>RESET PEAK</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={s.locateHint}>
+            Turn slowly in a full circle. Your body shadows the mic, so the signal peaks when you
+            face the contact. Coarse direction aid — not a precise bearing.
+          </Text>
+          <View style={s.itemRow}>
+            <Text style={s.detail}>signal {Math.round(level * 100)}%</Text>
+            <Text style={[s.detail, { color: COLORS.gold }]}>peak {Math.round(peakLevel * 100)}%</Text>
+          </View>
+        </View>
+      )}
 
       <View style={s.card}>
         <Text style={s.cardTitle}>ACTIVE THREATS</Text>
@@ -48,8 +74,8 @@ export default function SentinelScreen(props: SentinelProps) {
                 <Text style={s.itemConf}>{Math.round(t.confidence)}%</Text>
               </View>
               <View style={s.itemRow}>
-                <Text style={s.detail}>~{Math.round(t.distance)} ft</Text>
-                <Text style={s.detail}>{t.bearing >= 0 ? `${Math.round(t.bearing)}°` : 'bearing n/a'}</Text>
+                <Text style={s.detail}>{rangeBand(t.distance)}</Text>
+                <Text style={s.detail}>{t.bearing >= 0 ? `${Math.round(t.bearing)}°` : 'no bearing'}</Text>
                 <Text style={[s.detail, { color: sevColor(t.distance) }]}>{t.status}</Text>
               </View>
             </View>
@@ -101,8 +127,13 @@ const s = StyleSheet.create({
   badge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14 },
   badgeText: { fontSize: 11, fontWeight: '700', color: COLORS.darkNavy },
   status: { color: COLORS.muted, fontSize: 12, marginTop: 10 },
-  meterTrack: { height: 6, backgroundColor: COLORS.panel, borderRadius: 3, marginTop: 6, marginBottom: 14, overflow: 'hidden' },
-  meterFill: { height: 6, backgroundColor: COLORS.tealLight },
+  meterTrack: { height: 6, backgroundColor: COLORS.panel, borderRadius: 3, marginTop: 6, marginBottom: 14, position: 'relative' },
+  meterFill: { height: 6, backgroundColor: COLORS.tealLight, borderRadius: 3 },
+  peakMarker: { position: 'absolute', top: -2, width: 3, height: 10, backgroundColor: COLORS.gold, borderRadius: 1 },
+  locate: { backgroundColor: COLORS.panel, borderColor: COLORS.tealDark, borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 14 },
+  locateTitle: { color: COLORS.tealLight, fontWeight: '700', fontSize: 12, letterSpacing: 1 },
+  locateReset: { color: COLORS.gold, fontWeight: '700', fontSize: 11, letterSpacing: 1 },
+  locateHint: { color: COLORS.muted, fontSize: 11, marginVertical: 6, lineHeight: 15 },
   card: { backgroundColor: COLORS.panel, borderColor: COLORS.tealDark, borderWidth: 1, borderRadius: 8, padding: 16, marginBottom: 14 },
   cardTitle: { fontSize: 12, color: COLORS.gold, fontWeight: '700', textTransform: 'uppercase' },
   count: { fontSize: 40, fontWeight: '800', color: COLORS.tealLight },
