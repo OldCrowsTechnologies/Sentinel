@@ -1,0 +1,31 @@
+{
+  "name": "corvus-sentinel",
+  "version": "1.0.0",
+  "description": "Persistent air-defense monitor - acoustic drone detection for OCWS",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "build:android": "eas build --platform android --profile preview",
+    "build:android:prod": "eas build --platform android --profile production",
+    "parity": "bash training/run_parity.sh",
+    "train": "python3 training/train_corvus.py",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "expo": "~53.0.0",
+    "expo-av": "~15.1.7",
+    "expo-file-system": "~18.1.11",
+    "expo-haptics": "~14.1.4",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.6",
+    "react-native-audio-api": "^0.8.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.0.10",
+    "typescript": "~5.8.3"
+  },
+  "private": true
+}

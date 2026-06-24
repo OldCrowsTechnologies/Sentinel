@@ -1,0 +1,24 @@
+{
+  "_comment": "Reference acoustic profiles. The trained model keys on these blade-pass regions; values mirror corvus-sentinel-project.md and training/corvus_synth.py.",
+  "skydio_x2": {
+    "frequency_range_hz": [800, 1400],
+    "harmonics_hz": [800, 1600, 2400, 3200],
+    "typical_db_spl_at_100ft": [78, 85],
+    "motor_type": "brushless DC quad",
+    "notes": "periodic tonal comb + broadband below 500 Hz"
+  },
+  "dji_phantom_4": {
+    "frequency_range_hz": [1200, 1800],
+    "harmonics_hz": [1200, 2400, 3600],
+    "typical_db_spl_at_100ft": [80, 87],
+    "motor_type": "brushless DC quad",
+    "notes": "higher fundamental than Skydio, clean harmonic series"
+  },
+  "parrot_anafi": {
+    "frequency_range_hz": [920, 1200],
+    "harmonics_hz": [920, 1840, 2760],
+    "typical_db_spl_at_100ft": [72, 78],
+    "motor_type": "brushless DC quad",
+    "notes": "lower-frequency signature, compact airframe"
+  }
+}

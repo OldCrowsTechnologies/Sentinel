@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "Corvus Sentinel",
+    "slug": "corvus-sentinel",
+    "owner": "oldcrowswireless",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/branding/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "scheme": "corvussentinel",
+    "splash": {
+      "image": "./assets/branding/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1A2332"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.oldcrowswireless.corvussentinel",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Corvus Sentinel requires microphone access to detect and classify aerial threats in real time.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.oldcrowswireless.corvussentinel",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/branding/icon.png",
+        "backgroundColor": "#1A2332"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.INTERNET"
+      ]
+    },
+    "plugins": [
+      [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": true,
+          "iosMicrophonePermission": "Corvus Sentinel requires microphone access to detect and classify aerial threats.",
+          "androidPermissions": [
+            "android.permission.RECORD_AUDIO",
+            "android.permission.FOREGROUND_SERVICE",
+            "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+            "android.permission.POST_NOTIFICATIONS",
+            "android.permission.MODIFY_AUDIO_SETTINGS"
+          ],
+          "androidForegroundService": true,
+          "androidFSTypes": [
+            "microphone"
+          ]
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "37221e0e-f33f-4403-ab43-9b02fec98d47"
+      }
+    }
+  }
+}

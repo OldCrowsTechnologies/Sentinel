@@ -1,0 +1,12 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.env
+ios/
+android/
+training/parity_cases.json
+training/__pycache__/
+*.pyc
+.DS_Store

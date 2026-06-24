@@ -1,0 +1,229 @@
+"""
+train_corvus.py
+===============
+Train the Corvus Sentinel acoustic classifier and export it in the
+self-contained JSON format the Expo app loads (no TFLite / no tfjs runtime
+required -- the on-device forward pass is plain TypeScript in lib/mlClassifier.ts).
+
+USAGE
+-----
+  # Bootstrap on synthetic signatures (no data needed):
+  python3 train_corvus.py
+
+  # Production: train on real recordings. Point --data at a folder whose
+  # subfolders are class names, e.g.
+  #   data/train/None/*.wav
+  #   data/train/Skydio X2/*.wav
+  #   data/train/DJI Phantom/*.wav
+  # (or .wav files whose names contain a class keyword like "skydio")
+  python3 train_corvus.py --data /path/to/recordings --per-class 0
+
+  # Mix synthetic + real (recommended while you collect Skydio captures):
+  python3 train_corvus.py --data /path/to/recordings --per-class 300
+
+Output: ../assets/models/corvus-model.json
+"""
+
+import argparse
+import glob
+import json
+import os
+
+import numpy as np
+from scipy.io import wavfile
+from scipy.signal import resample_poly
+from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import classification_report, confusion_matrix
+
+from corvus_features import (
+    SR, NFFT, HOP, N_MELS, MEL_FB, BAND_RATIOS, FEATURE_DIM, LABELS,
+    extract_features,
+)
+from corvus_synth import build_synthetic_dataset, CLIP_SEC
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT_PATH = os.path.join(HERE, "..", "assets", "models", "corvus-model.json")
+
+
+# ---------------------------------------------------------------------------
+# Real-data loading
+# ---------------------------------------------------------------------------
+def _label_from_path(path):
+    """Infer class index from parent folder name or filename keyword."""
+    parts = [p.lower() for p in path.replace("\\", "/").split("/")]
+    name = parts[-1]
+    hay = " ".join(parts[-2:])
+    keymap = {
+        "none": 0, "noise": 0, "background": 0, "negative": 0, "ambient": 0,
+        "skydio": 1, "x2": 1,
+        "dji": 2, "phantom": 2, "mavic": 2,
+        "parrot": 3, "anafi": 3,
+        "unknown": 4, "other": 4,
+    }
+    for parent in reversed(parts[:-1]):
+        for k, v in keymap.items():
+            if k in parent:
+                return v
+    for k, v in keymap.items():
+        if k in hay:
+            return v
+    return None
+
+
+def _load_wav_mono_16k(path):
+    sr, data = wavfile.read(path)
+    data = data.astype(np.float64)
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+    # Normalize integer PCM to [-1, 1]
+    if np.issubdtype(np.dtype(data.dtype), np.integer) or np.max(np.abs(data)) > 1.5:
+        data = data / (np.max(np.abs(data)) + 1e-9)
+    if sr != SR:
+        # rational resample to 16 kHz
+        from math import gcd
+        g = gcd(int(sr), SR)
+        data = resample_poly(data, SR // g, int(sr) // g)
+    return data
+
+
+def load_real_dataset(data_dir, win_sec=CLIP_SEC):
+    """Walk data_dir, slice each file into win_sec windows, extract features."""
+    paths = []
+    for ext in ("wav", "WAV"):
+        paths += glob.glob(os.path.join(data_dir, "**", f"*.{ext}"), recursive=True)
+    waves, labels = [], []
+    win = int(SR * win_sec)
+    skipped = 0
+    for p in paths:
+        li = _label_from_path(p)
+        if li is None:
+            skipped += 1
+            continue
+        try:
+            x = _load_wav_mono_16k(p)
+        except Exception as e:
+            print(f"  ! skip {p}: {e}")
+            skipped += 1
+            continue
+        if len(x) < win:
+            waves.append(np.pad(x, (0, win - len(x))))
+            labels.append(li)
+        else:
+            for start in range(0, len(x) - win + 1, win):
+                waves.append(x[start:start + win])
+                labels.append(li)
+    print(f"  loaded {len(waves)} windows from {len(paths)} files ({skipped} skipped)")
+    return waves, np.array(labels)
+
+
+# ---------------------------------------------------------------------------
+# Train + export
+# ---------------------------------------------------------------------------
+def featurize(waves):
+    X = np.zeros((len(waves), FEATURE_DIM), dtype=np.float64)
+    for i, w in enumerate(waves):
+        X[i] = extract_features(w)
+    return X
+
+
+def export_model(clf, mean, scale, path):
+    """Serialize standardizer + MLP + DSP config to a single JSON file."""
+    layers = []
+    n_layers = len(clf.coefs_)
+    for i, (W, b) in enumerate(zip(clf.coefs_, clf.intercepts_)):
+        layers.append({
+            "W": [[float(v) for v in row] for row in W],   # shape (in, out)
+            "b": [float(v) for v in b],
+            "activation": "softmax" if i == n_layers - 1 else "relu",
+        })
+
+    model = {
+        "version": 1,
+        "format": "corvus-mlp-json",
+        "labels": LABELS,
+        "dsp": {
+            "sampleRate": SR,
+            "nfft": NFFT,
+            "hop": HOP,
+            "nMels": N_MELS,
+            "clipSec": CLIP_SEC,
+            "bandRatios": [[lo, hi] for (lo, hi) in BAND_RATIOS],
+            "melFilterbank": [[float(v) for v in row] for row in MEL_FB],  # (N_MELS, nbins)
+        },
+        "featureDim": FEATURE_DIM,
+        "scaler": {"mean": [float(v) for v in mean], "scale": [float(v) for v in scale]},
+        "mlp": {"layers": layers},
+    }
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(model, f)
+    return os.path.getsize(path)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", default=None, help="folder of labeled real WAVs")
+    ap.add_argument("--per-class", type=int, default=400,
+                    help="synthetic clips per class (0 = real only)")
+    ap.add_argument("--seed", type=int, default=1337)
+    args = ap.parse_args()
+
+    waves, y = [], []
+
+    if args.per_class > 0:
+        print(f"Generating synthetic dataset ({args.per_class}/class)...")
+        sw, sy = build_synthetic_dataset(per_class=args.per_class, seed=args.seed)
+        waves += sw
+        y = list(sy)
+
+    if args.data:
+        print(f"Loading real dataset from {args.data} ...")
+        rw, ry = load_real_dataset(args.data)
+        waves += rw
+        y = list(y) + list(ry)
+
+    y = np.array(y)
+    if len(waves) == 0:
+        raise SystemExit("No data. Provide --data or set --per-class > 0.")
+
+    print(f"Total clips: {len(waves)} | classes present: {sorted(set(y.tolist()))}")
+    print("Extracting features...")
+    X = featurize(waves)
+
+    # Standardize
+    mean = X.mean(axis=0)
+    scale = X.std(axis=0) + 1e-8
+    Xs = (X - mean) / scale
+
+    Xtr, Xte, ytr, yte = train_test_split(
+        Xs, y, test_size=0.2, random_state=args.seed, stratify=y
+    )
+
+    print("Training MLP (64, 32)...")
+    clf = MLPClassifier(
+        hidden_layer_sizes=(64, 32),
+        activation="relu",
+        alpha=1e-3,
+        max_iter=400,
+        random_state=args.seed,
+    )
+    clf.fit(Xtr, ytr)
+
+    acc = clf.score(Xte, yte)
+    print(f"\n=== Held-out accuracy: {acc*100:.1f}% ===\n")
+    yp = clf.predict(Xte)
+    present = sorted(set(y.tolist()))
+    names = [LABELS[i] for i in present]
+    print(classification_report(yte, yp, labels=present, target_names=names, zero_division=0))
+    print("Confusion matrix (rows=true, cols=pred):")
+    print("labels:", names)
+    print(confusion_matrix(yte, yp, labels=present))
+
+    size = export_model(clf, mean, scale, OUT_PATH)
+    print(f"\nExported model -> {os.path.normpath(OUT_PATH)} ({size/1024:.1f} KB)")
+    print("Feature dim:", FEATURE_DIM, "| Labels:", LABELS)
+
+
+if __name__ == "__main__":
+    main()
