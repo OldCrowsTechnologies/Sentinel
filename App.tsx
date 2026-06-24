@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Alert, Share, StatusBar, View } from 'react-native';
 
+import LaunchScreen from './app/LaunchScreen';
 import SentinelScreen from './app/SentinelScreen';
 import SettingsScreen, { SettingsState } from './app/SettingsScreen';
 import DetectionsScreen from './app/DetectionsScreen';
@@ -18,6 +19,7 @@ const API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY || '';
 const SILENCE_RMS = 0.004; // below this, treat window as silence (force "None")
 
 export default function App() {
+  const [showLaunch, setShowLaunch] = useState(true); // branded first-open hero
   const [screen, setScreen] = useState<ScreenName>('sentinel');
   const [isMonitoring, setMonitoring] = useState(false);
   const [modelReady, setModelReady] = useState(false);
@@ -154,6 +156,7 @@ export default function App() {
   return (
     <View style={{ flex: 1, backgroundColor: '#1A2332' }}>
       <StatusBar barStyle="light-content" />
+      {showLaunch && <LaunchScreen onEnter={() => setShowLaunch(false)} />}
       {screen === 'sentinel' && (
         <SentinelScreen
           isMonitoring={isMonitoring}
