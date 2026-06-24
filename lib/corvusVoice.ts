@@ -1,10 +1,16 @@
 /**
- * corvusVoice.ts -- Corvus threat briefs via ElevenLabs TTS + haptics.
- * Locked voice ID and sign-off per OCWS brand. Degrades gracefully to a
- * console log + haptic buzz when no API key is configured (offline MVP).
+ * corvusVoice.ts -- Corvus threat briefs.
+ *
+ * Audible TTS is DISABLED until production. This module currently delivers
+ * briefs as a console log + a haptic buzz only -- no ElevenLabs synthesis and
+ * no audio playback, so the app carries no `expo-av` / `expo-asset` dependency.
+ *
+ * The public surface (constructor, brief, setApiKey, hasVoice, dispose) is kept
+ * intact so App.tsx / SettingsScreen need no changes. To restore the spoken
+ * Corvus voice for production, reintroduce a TTS path here (prefer `expo-audio`
+ * over the deprecated `expo-av`) and wire the `speak` option back through.
  */
 
-import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 
 export interface BriefThreat {
@@ -14,20 +20,16 @@ export interface BriefThreat {
 }
 
 export interface BriefOptions {
-  speak?: boolean; // synthesize + play TTS
+  speak?: boolean; // accepted for API compatibility; audio is disabled pre-production
   vibrate?: boolean; // haptic feedback
 }
 
 const SIGN_OFF = 'Corvus. Old Crows Wireless Solutions. We Always Find the Signal.';
 
 export class CorvusVoice {
+  // Retained only so SettingsScreen's voice toggle keeps a coherent state.
+  // No network calls are made while audible voice is disabled.
   private apiKey: string;
-  private voiceId = 'Oq6YjhFgak69fZQyDSCd'; // locked Corvus voice
-  private baseUrl = 'https://api.elevenlabs.io/v1';
-  private modelId = 'eleven_multilingual_v2';
-  private voiceSettings = { stability: 0.55, similarity_boost: 0.85 };
-  private sound: Audio.Sound | null = null;
-  private playing = false;
 
   constructor(apiKey = '') {
     this.apiKey = apiKey;
@@ -37,8 +39,9 @@ export class CorvusVoice {
     this.apiKey = key;
   }
 
+  /** Audible voice is disabled until production; always false for now. */
   hasVoice(): boolean {
-    return this.apiKey.length > 0;
+    return false;
   }
 
   buildScript(threats: BriefThreat[]): string {
@@ -56,8 +59,13 @@ export class CorvusVoice {
     return s + SIGN_OFF;
   }
 
+  /**
+   * Deliver a threat brief. Audible TTS is disabled pre-production, so this
+   * logs the script and (optionally) buzzes the haptics. `opts.speak` is
+   * accepted but ignored until the spoken voice is restored.
+   */
   async brief(threats: BriefThreat[], opts: BriefOptions = {}): Promise<void> {
-    const { speak = true, vibrate = true } = opts;
+    const { vibrate = true } = opts;
     const script = this.buildScript(threats);
     console.log('[Corvus]', script);
 
@@ -68,59 +76,16 @@ export class CorvusVoice {
         /* haptics unavailable */
       }
     }
-
-    if (speak && this.apiKey) {
-      try {
-        await this.speak(script);
-      } catch (e) {
-        console.error('[Corvus] TTS failed:', e);
-      }
-    }
   }
 
-  private async speak(text: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/text-to-speech/${this.voiceId}`, {
-      method: 'POST',
-      headers: { 'xi-api-key': this.apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        model_id: this.modelId,
-        voice_settings: this.voiceSettings,
-        output_format: 'mp3_44100_128',
-      }),
-    });
-    if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${await res.text()}`);
-
-    const blob = await res.blob();
-    const uri: string = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob); // data: URI playable by expo-av
-    });
-
-    if (this.sound) {
-      await this.sound.unloadAsync();
-      this.sound = null;
-    }
-    this.sound = new Audio.Sound();
-    await this.sound.loadAsync({ uri });
-    this.playing = true;
-    await this.sound.playAsync();
-  }
-
+  /** No-op while audio is disabled; kept for API compatibility. */
   async stop(): Promise<void> {
-    if (this.sound && this.playing) {
-      await this.sound.stopAsync();
-      this.playing = false;
-    }
+    /* no audio to stop */
   }
 
+  /** No-op while audio is disabled; kept for API compatibility. */
   async dispose(): Promise<void> {
-    if (this.sound) {
-      await this.sound.unloadAsync();
-      this.sound = null;
-    }
+    /* no audio resources to release */
   }
 }
 
