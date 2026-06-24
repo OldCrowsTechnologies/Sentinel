@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "scheme": "corvussentinel",
     "splash": {
-      "image": "./assets/branding/splash.png",
+      "image": "./assets/branding/launch-hero.png",
       "resizeMode": "contain",
       "backgroundColor": "#1A2332"
     },
