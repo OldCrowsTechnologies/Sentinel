@@ -9,7 +9,11 @@
 import * as Network from 'expo-network';
 import { listSpecimens, getSpecimen, markUploaded } from './specimenStore';
 
-const LIBRARY_URL = process.env.EXPO_PUBLIC_CORVUS_LIBRARY_URL || '';
+// Rides OCWS infrastructure (parent of Crow's Eye + Corvus Sentinel). Override
+// per-environment with EXPO_PUBLIC_CORVUS_LIBRARY_URL. The receiver endpoint
+// still needs to be stood up on the OCWS site before uploads land.
+const DEFAULT_LIBRARY_URL = 'https://www.oldcrowswireless.com/api/corvus/specimens';
+const LIBRARY_URL = process.env.EXPO_PUBLIC_CORVUS_LIBRARY_URL || DEFAULT_LIBRARY_URL;
 
 export function libraryConfigured(): boolean {
   return LIBRARY_URL.length > 0;

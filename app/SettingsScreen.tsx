@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Switch, StyleSheet, ScrollView } from 'react-native';
 import { COLORS } from '../lib/theme';
+import { getRfModuleStatus } from '../lib/rfSensorService';
 
 export interface SettingsState {
   voiceEnabled: boolean;
@@ -16,6 +17,7 @@ export interface SettingsProps {
 }
 
 export default function SettingsScreen({ settings, onChange, onBack }: SettingsProps) {
+  const rf = getRfModuleStatus();
   return (
     <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 40 }}>
       <Text style={s.title}>SETTINGS</Text>
@@ -48,6 +50,16 @@ export default function SettingsScreen({ settings, onChange, onBack }: SettingsP
         </TouchableOpacity>
       </View>
       <Text style={s.hint}>Minimum classifier confidence to raise a new-threat alert.</Text>
+
+      <View style={[s.row, { marginTop: 18 }]}>
+        <Text style={s.label}>External RF sensor (SDR)</Text>
+        <Switch value={false} disabled={!rf.present} onValueChange={() => {}} />
+      </View>
+      <Text style={s.hint}>
+        LoRa / ExpressLRS / control-link detection via an external Corvus RF module.
+        {' '}
+        {rf.note} Antenna inert until a module is connected.
+      </Text>
 
       <View style={s.info}>
         <Text style={s.infoTitle}>MODEL</Text>

@@ -65,7 +65,8 @@
           ]
         }
       ],
-      "react-native-ble-plx"
+      "react-native-ble-plx",
+      "@maplibre/maplibre-react-native"
     ],
     "extra": {
       "eas": {
