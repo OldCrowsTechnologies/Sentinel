@@ -22,7 +22,8 @@
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
     "react-native": "0.79.6",
-    "react-native-audio-api": "^0.8.0"
+    "react-native-audio-api": "^0.8.0",
+    "react-native-ble-plx": "^3.5.1"
   },
   "devDependencies": {
     "@types/react": "~19.0.10",

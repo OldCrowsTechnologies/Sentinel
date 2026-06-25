@@ -64,7 +64,8 @@
             "microphone"
           ]
         }
-      ]
+      ],
+      "react-native-ble-plx"
     ],
     "extra": {
       "eas": {
