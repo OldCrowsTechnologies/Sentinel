@@ -34,6 +34,14 @@ N_MELS = 20         # number of mel bands
 FMIN = 50.0         # lowest mel edge (Hz)
 FMAX = 8000.0       # highest mel edge (Hz) == Nyquist for SR=16000
 
+# Noise rejection: a 1st-order IIR high-pass applied (after DC removal, before
+# framing) to suppress voice fundamentals (~85-255 Hz) and PA/crowd low end
+# while keeping drone rotor signatures (>~400 Hz). This is a FEATURE-PATH change,
+# so lib/dsp.ts implements the IDENTICAL recurrence and the model is trained with
+# it on -- keep both in lockstep or parity breaks (run_parity.sh).
+HIGH_PASS_ENABLED = True
+HIGH_PASS_FC = 400.0  # Hz
+
 # Drone-band energy ratios (Hz ranges) -- documented blade-pass regions.
 # These give the classifier explicit, interpretable handles on each platform.
 BAND_RATIOS = [
@@ -89,6 +97,31 @@ MEL_FB = build_mel_filterbank()
 HANN = np.hanning(NFFT).astype(np.float64)
 
 
+def high_pass(x, fc=HIGH_PASS_FC, fs=SR):
+    """1st-order IIR high-pass. EXPLICIT recurrence (matches lib/dsp.ts exactly):
+        y[0] = x[0]; y[n] = alpha * (y[n-1] + x[n] - x[n-1])
+    where alpha = RC / (RC + dt), RC = 1/(2*pi*fc), dt = 1/fs.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    n = len(x)
+    if n == 0:
+        return x
+    rc = 1.0 / (2.0 * np.pi * fc)
+    dt = 1.0 / fs
+    alpha = rc / (rc + dt)
+    y = np.empty(n, dtype=np.float64)
+    y[0] = x[0]
+    prev_x = x[0]
+    prev_y = x[0]
+    for i in range(1, n):
+        xi = x[i]
+        yi = alpha * (prev_y + xi - prev_x)
+        y[i] = yi
+        prev_x = xi
+        prev_y = yi
+    return y
+
+
 # ---------------------------------------------------------------------------
 # Feature extraction
 # ---------------------------------------------------------------------------
@@ -118,6 +151,9 @@ def extract_features(x, sr=SR):
         x = x.mean(axis=1)  # downmix to mono
     # Remove DC offset
     x = x - np.mean(x)
+    # Noise-rejection high-pass (must mirror lib/dsp.ts exactly for parity)
+    if HIGH_PASS_ENABLED:
+        x = high_pass(x, HIGH_PASS_FC, SR)
 
     frames = _frame_signal(x)                 # (n_frames, NFFT)
     windowed = frames * HANN[None, :]

@@ -36,6 +36,7 @@ export function buildReportHtml(report: SessionReport): string {
         <td>${fmt(t.firstSeen)}</td>
         <td>${dur}s</td>
         <td>${loc(t.lat, t.lon)}</td>
+        <td>${t.voicePresent ? 'yes' : 'no'}</td>
       </tr>`;
     })
     .join('');
@@ -65,7 +66,7 @@ export function buildReportHtml(report: SessionReport): string {
     total > 0
       ? `<table><thead><tr>
           <th>Type</th><th>Peak Conf.</th><th>Range (est)</th><th>Bearing</th>
-          <th>Status</th><th>First Seen (UTC)</th><th>Track Dur.</th><th>Operator GPS</th>
+          <th>Status</th><th>First Seen (UTC)</th><th>Track Dur.</th><th>Operator GPS</th><th>Voice</th>
         </tr></thead><tbody>${rows}</tbody></table>`
       : `<div class="empty">No contacts detected during this session.</div>`
   }

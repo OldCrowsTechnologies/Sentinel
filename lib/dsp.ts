@@ -16,6 +16,47 @@ export interface DspConfig {
   nMels: number;
   bandRatios: [number, number][];
   melFilterbank: number[][]; // (nMels, nfft/2+1), exported by the trainer
+  highPass?: { enabled: boolean; fc: number; order: number };
+}
+
+/**
+ * 1st-order IIR high-pass, IN PLACE over x[0..len). EXACT mirror of
+ * training/corvus_features.py:high_pass() -- y[0]=x[0],
+ * y[n]=alpha*(y[n-1]+x[n]-x[n-1]), alpha = RC/(RC+dt), RC=1/(2*pi*fc), dt=1/fs.
+ * Suppresses voice fundamentals; trained into the model for parity.
+ */
+export function highPassInPlace(x: Float64Array, len: number, fc: number, fs: number): void {
+  if (len < 2) return;
+  const rc = 1 / (2 * Math.PI * fc);
+  const dt = 1 / fs;
+  const alpha = rc / (rc + dt);
+  let prevX = x[0];
+  let prevY = x[0]; // y[0] = x[0] (unchanged)
+  for (let n = 1; n < len; n++) {
+    const xn = x[n];
+    const yn = alpha * (prevY + xn - prevX);
+    x[n] = yn;
+    prevX = xn;
+    prevY = yn;
+  }
+}
+
+/** Peak |amplitude| of the high-passed signal (for filtered_audio_peak). */
+export function filteredPeak(samples: ArrayLike<number>, fc: number, fs: number): number {
+  const len = samples.length;
+  if (len === 0) return 0;
+  const x = new Float64Array(len);
+  let mean = 0;
+  for (let i = 0; i < len; i++) mean += samples[i];
+  mean /= len;
+  for (let i = 0; i < len; i++) x[i] = samples[i] - mean;
+  highPassInPlace(x, len, fc, fs);
+  let peak = 0;
+  for (let i = 0; i < len; i++) {
+    const a = Math.abs(x[i]);
+    if (a > peak) peak = a;
+  }
+  return peak;
 }
 
 /** np.hanning(M): w[n] = 0.5 - 0.5*cos(2*pi*n/(M-1)) */
@@ -88,6 +129,12 @@ export function extractFeatures(samples: ArrayLike<number>, cfg: DspConfig): Flo
   for (let i = 0; i < len; i++) mean += samples[i];
   mean = len > 0 ? mean / len : 0;
   for (let i = 0; i < len; i++) x[i] = samples[i] - mean;
+  // Noise-rejection high-pass (after DC removal, before framing/padding) --
+  // mirrors corvus_features.py exactly so train/inference parity holds. Driven
+  // by the MODEL's config, never a runtime flag (see lib/config.ts).
+  if (cfg.highPass && cfg.highPass.enabled) {
+    highPassInPlace(x, len, cfg.highPass.fc, sampleRate);
+  }
   // (zero-padded tail already 0 - mean? Python pads AFTER dc removal only when
   // len<nfft via _frame_signal which pads zeros; those pads are 0, not -mean.
   // We replicate: if len<nfft, the pad region must be 0, not -mean.)
@@ -164,6 +211,39 @@ export function extractFeatures(samples: ArrayLike<number>, cfg: DspConfig): Flo
   out.set(melStd, nMels);
   out.set(ratios, 2 * nMels);
   return out;
+}
+
+/**
+ * Mean power spectrum across frames on the RAW (DC-removed, NOT high-passed)
+ * signal. Diagnostic only (no parity obligation) -- used by the VAD, which must
+ * see the voice energy the model's high-pass removes.
+ */
+export function meanPowerSpectrum(samples: ArrayLike<number>, cfg: DspConfig): Float64Array {
+  const { nfft, hop } = cfg;
+  const nBins = nfft / 2 + 1;
+  const win = hann(nfft);
+  const len = samples.length;
+  const x = new Float64Array(Math.max(len, nfft));
+  let mean = 0;
+  for (let i = 0; i < len; i++) mean += samples[i];
+  mean = len > 0 ? mean / len : 0;
+  for (let i = 0; i < len; i++) x[i] = samples[i] - mean;
+
+  const nFrames = 1 + Math.floor((x.length - nfft) / hop);
+  const meanPower = new Float64Array(nBins);
+  const re = new Float64Array(nfft);
+  const im = new Float64Array(nfft);
+  for (let f = 0; f < nFrames; f++) {
+    const start = f * hop;
+    for (let i = 0; i < nfft; i++) {
+      re[i] = x[start + i] * win[i];
+      im[i] = 0;
+    }
+    fftRadix2(re, im);
+    for (let k = 0; k < nBins; k++) meanPower[k] += re[k] * re[k] + im[k] * im[k];
+  }
+  if (nFrames > 0) for (let k = 0; k < nBins; k++) meanPower[k] /= nFrames;
+  return meanPower;
 }
 
 /**

@@ -30,6 +30,7 @@ export interface Threat {
   estFundamentalHz?: number | null;
   sizeClass?: 'small' | 'medium' | 'large' | null;
   oodScore?: number | null;
+  voicePresent?: boolean; // VAD flagged speech while this contact was seen
 }
 
 export interface AlertEvent {
@@ -53,6 +54,7 @@ export interface Detection {
   estFundamentalHz?: number | null;
   sizeClass?: 'small' | 'medium' | 'large' | null;
   oodScore?: number | null;
+  voicePresent?: boolean;
 }
 
 export class ThreatTracker {
@@ -104,6 +106,7 @@ export class ThreatTracker {
           estFundamentalHz: d.estFundamentalHz ?? null,
           sizeClass: d.sizeClass ?? null,
           oodScore: d.oodScore ?? null,
+          voicePresent: d.voicePresent ?? false,
         };
         this.threats.set(threat.id, threat);
         this.sessionLog.push(threat);
@@ -126,6 +129,7 @@ export class ThreatTracker {
       if (d.estFundamentalHz != null) existing.estFundamentalHz = d.estFundamentalHz;
       if (d.sizeClass != null) existing.sizeClass = d.sizeClass;
       if (d.oodScore != null) existing.oodScore = d.oodScore;
+      if (d.voicePresent) existing.voicePresent = true; // sticky: voice seen at any point
       existing.trajectory.push({ distance: d.distance, confidence: d.confidence, timestamp: ts });
       if (existing.trajectory.length > 60) existing.trajectory.shift();
 

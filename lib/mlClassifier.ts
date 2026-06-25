@@ -7,8 +7,10 @@
  * verified identical to the trainer (training/verify_parity.*).
  */
 
-import { extractFeatures, estimateDominantHz } from './dsp';
+import { extractFeatures, estimateDominantHz, filteredPeak } from './dsp';
 import type { DspConfig } from './dsp';
+import { detectVoice } from './vad';
+import { Config } from './config';
 
 export interface CorvusLayer {
   W: number[][]; // (in, out)
@@ -28,6 +30,7 @@ export interface CorvusModel {
     clipSec: number;
     bandRatios: [number, number][];
     melFilterbank: number[][];
+    highPass?: { enabled: boolean; fc: number; order: number };
   };
   featureDim: number;
   scaler: { mean: number[]; scale: number[] };
@@ -79,6 +82,11 @@ export interface ClassificationResult {
   bearing: number; // -1 = unknown (single mic: no direction-finding)
   timestamp: number;
   openSet: OpenSetVerdict;
+  // Noise-rejection outputs
+  droneDetected: boolean; // after VAD confidence gating
+  voicePresent: boolean; // VAD flagged speech in this window
+  filteredAudioPeak: number; // peak |amp| of the high-passed signal
+  confidenceAdjusted: boolean; // a VAD penalty/suppression was applied
 }
 
 /** Standardize a feature vector: (x - mean) / scale. */
@@ -146,6 +154,7 @@ export class DroneClassifier {
       nMels: model.dsp.nMels,
       bandRatios: model.dsp.bandRatios,
       melFilterbank: model.dsp.melFilterbank,
+      highPass: model.dsp.highPass, // trained-in high-pass (parity-safe)
     };
   }
 
@@ -193,9 +202,31 @@ export class DroneClassifier {
       : rawLabel;
     const distance = this.estimateDistance(rms, verdict.matchedModel ?? rawLabel);
 
+    // --- Noise rejection: VAD + confidence gating (runtime-safe) ---
+    const voice = Config.ENABLE_VAD_CHECK ? detectVoice(samples, this.cfg) : null;
+    const voicePresent = !!voice?.voicePresent;
+    const fc = this.cfg.highPass?.enabled ? this.cfg.highPass.fc : Config.HIGH_PASS_FC;
+    const filteredAudioPeak = filteredPeak(samples, fc, this.cfg.sampleRate);
+
+    let adjConfidence = confidence;
+    let droneDetected = verdict.dronePresent;
+    let confidenceAdjusted = false;
+    if (voicePresent && droneDetected) {
+      if (confidence > 90) {
+        // Strong signal survives noise -> no penalty.
+      } else if (confidence > 85) {
+        adjConfidence = confidence - Config.VAD_CONFIDENCE_PENALTY * 100;
+        confidenceAdjusted = true;
+      } else if (confidence < 70) {
+        // Likely a false positive during speech -> ignore the detection.
+        droneDetected = false;
+        confidenceAdjusted = true;
+      }
+    }
+
     return {
-      label,
-      confidence,
+      label: droneDetected ? label : 'None',
+      confidence: adjConfidence,
       classIdx,
       probs,
       rms,
@@ -208,6 +239,10 @@ export class DroneClassifier {
       bearing: -1, // single mic: no direction-finding
       timestamp: Date.now(),
       openSet: verdict,
+      droneDetected,
+      voicePresent,
+      filteredAudioPeak,
+      confidenceAdjusted,
     };
   }
 

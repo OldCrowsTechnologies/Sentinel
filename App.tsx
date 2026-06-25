@@ -18,6 +18,7 @@ import { initNotifications, notifyIntercept } from './lib/notifications';
 import { initLocation, startLocation, stopLocation, getLastFix } from './lib/locationService';
 import { saveSpecimen, pendingCount } from './lib/specimenStore';
 import { syncPending } from './lib/specimenSync';
+import { logDetection } from './lib/missionLog';
 import corvusModelJson from './assets/models/corvus-model.json';
 
 type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map';
@@ -136,9 +137,25 @@ export default function App() {
       estFundamentalHz: result.openSet.estFundamentalHz,
       sizeClass: result.openSet.sizeClass,
       oodScore: result.openSet.oodScore,
+      voicePresent: result.voicePresent,
     });
 
     setThreats(tracker.getActiveThreats());
+
+    // Log to SQLite for post-mission analysis: any drone hit or voice activity.
+    const droneHit = label !== 'None' && result.droneDetected;
+    if (droneHit || result.voicePresent) {
+      logDetection({
+        ts: result.timestamp,
+        droneDetected: droneHit,
+        label,
+        confidence: result.confidence,
+        voicePresent: result.voicePresent,
+        filteredAudioPeak: result.filteredAudioPeak,
+        lat: fix?.lat ?? null,
+        lon: fix?.lon ?? null,
+      });
+    }
 
     // Notify on every NEW intercept so a minimized/backgrounded operator is alerted.
     for (const a of alerts) {
