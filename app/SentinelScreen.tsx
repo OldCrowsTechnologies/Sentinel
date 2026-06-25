@@ -14,6 +14,7 @@ export interface SentinelProps {
   lastAlert: AlertEvent | null;
   onToggle: () => void;
   onReport: () => void;
+  onSelectThreat: (threat: Threat) => void;
   onNavigate: (screen: 'settings' | 'detections') => void;
 }
 
@@ -68,17 +69,26 @@ export default function SentinelScreen(props: SentinelProps) {
       {threats.length > 0 ? (
         <ScrollView style={s.list}>
           {threats.map((t) => (
-            <View key={t.id} style={[s.item, { borderLeftColor: sevColor(t.distance) }]}>
+            <TouchableOpacity
+              key={t.id}
+              style={[s.item, { borderLeftColor: t.isUnknownBuild ? COLORS.warning : sevColor(t.distance) }]}
+              onPress={() => props.onSelectThreat(t)}
+              activeOpacity={0.7}
+            >
               <View style={s.itemRow}>
                 <Text style={s.itemType}>{t.type}</Text>
                 <Text style={s.itemConf}>{Math.round(t.confidence)}%</Text>
               </View>
+              {t.isUnknownBuild && (
+                <Text style={s.homemadeFlag}>⚠ POSSIBLE HOMEMADE / UNKNOWN BUILD</Text>
+              )}
               <View style={s.itemRow}>
                 <Text style={s.detail}>{rangeBand(t.distance)}</Text>
                 <Text style={s.detail}>{t.bearing >= 0 ? `${Math.round(t.bearing)}°` : 'no bearing'}</Text>
                 <Text style={[s.detail, { color: sevColor(t.distance) }]}>{t.status}</Text>
               </View>
-            </View>
+              <Text style={s.tapHint}>tap for detail ›</Text>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       ) : (
@@ -142,6 +152,8 @@ const s = StyleSheet.create({
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
   itemType: { color: COLORS.lightGray, fontWeight: '700', fontSize: 15 },
   itemConf: { color: COLORS.gold, fontWeight: '700' },
+  homemadeFlag: { color: COLORS.warning, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, marginTop: 3 },
+  tapHint: { color: COLORS.tealDark, fontSize: 10, textAlign: 'right', marginTop: 4 },
   detail: { color: COLORS.muted, fontSize: 12 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { color: COLORS.muted, textAlign: 'center', paddingHorizontal: 24 },

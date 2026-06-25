@@ -165,3 +165,55 @@ export function extractFeatures(samples: ArrayLike<number>, cfg: DspConfig): Flo
   out.set(ratios, 2 * nMels);
   return out;
 }
+
+/**
+ * Estimate the dominant rotor/tonal frequency (Hz) in a window, for the
+ * acoustic "possible spec" on unknown/homemade contacts. This is a DIAGNOSTIC
+ * ONLY -- it is NOT part of the model feature path, so it has no parity
+ * obligation. Averages the periodogram across frames and returns the peak-energy
+ * frequency within [fmin, fmax].
+ */
+export function estimateDominantHz(
+  samples: ArrayLike<number>,
+  cfg: DspConfig,
+  fmin = 150,
+  fmax = 2500
+): number {
+  const { nfft, hop, sampleRate } = cfg;
+  const nBins = nfft / 2 + 1;
+  const win = hann(nfft);
+  const len = samples.length;
+  const x = new Float64Array(Math.max(len, nfft));
+  let mean = 0;
+  for (let i = 0; i < len; i++) mean += samples[i];
+  mean = len > 0 ? mean / len : 0;
+  for (let i = 0; i < len; i++) x[i] = samples[i] - mean;
+
+  const nFrames = 1 + Math.floor((x.length - nfft) / hop);
+  const meanPower = new Float64Array(nBins);
+  const re = new Float64Array(nfft);
+  const im = new Float64Array(nfft);
+  for (let f = 0; f < nFrames; f++) {
+    const start = f * hop;
+    for (let i = 0; i < nfft; i++) {
+      re[i] = x[start + i] * win[i];
+      im[i] = 0;
+    }
+    fftRadix2(re, im);
+    for (let k = 0; k < nBins; k++) meanPower[k] += re[k] * re[k] + im[k] * im[k];
+  }
+
+  const nyq = sampleRate / 2;
+  let bestBin = -1;
+  let bestVal = -1;
+  for (let k = 0; k < nBins; k++) {
+    const freq = (k * nyq) / (nBins - 1);
+    if (freq < fmin || freq > fmax) continue;
+    if (meanPower[k] > bestVal) {
+      bestVal = meanPower[k];
+      bestBin = k;
+    }
+  }
+  if (bestBin < 0) return 0;
+  return (bestBin * nyq) / (nBins - 1);
+}

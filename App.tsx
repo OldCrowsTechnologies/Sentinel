@@ -5,12 +5,15 @@ import LaunchScreen from './app/LaunchScreen';
 import SentinelScreen from './app/SentinelScreen';
 import SettingsScreen, { SettingsState } from './app/SettingsScreen';
 import DetectionsScreen from './app/DetectionsScreen';
+import ContactDetailScreen from './app/ContactDetailScreen';
 
 import AudioCaptureService from './lib/audioCapture';
 import DroneClassifier, { CorvusModel } from './lib/mlClassifier';
 import ThreatTracker, { Threat, AlertEvent } from './lib/threatTracker';
 import CorvusVoice from './lib/corvusVoice';
 import { writeReport } from './lib/reportGenerator';
+import { initNotifications, notifyIntercept } from './lib/notifications';
+import { initLocation, startLocation, stopLocation, getLastFix } from './lib/locationService';
 import corvusModelJson from './assets/models/corvus-model.json';
 
 type ScreenName = 'sentinel' | 'settings' | 'detections';
@@ -27,6 +30,7 @@ export default function App() {
   const [level, setLevel] = useState(0);
   const [peakLevel, setPeakLevel] = useState(0); // peak-hold for the rotate-to-peak locate aid
   const [threats, setThreats] = useState<Threat[]>([]);
+  const [selectedThreat, setSelectedThreat] = useState<Threat | null>(null);
   const [lastAlert, setLastAlert] = useState<AlertEvent | null>(null);
   const [settings, setSettings] = useState<SettingsState>({
     voiceEnabled: true,
@@ -40,6 +44,7 @@ export default function App() {
   const trackerRef = useRef<ThreatTracker | null>(null);
   const voiceRef = useRef<CorvusVoice | null>(null);
   const sessionStartRef = useRef<number>(0);
+  const sessionOriginRef = useRef<{ lat: number; lon: number; accuracy: number | null } | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
@@ -62,6 +67,7 @@ export default function App() {
     }
     return () => {
       audioRef.current?.stopMonitoring();
+      stopLocation();
       voiceRef.current?.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,6 +84,7 @@ export default function App() {
 
     const result = clf.classifySamples(win);
     const label = rms < SILENCE_RMS ? 'None' : result.label;
+    const fix = getLastFix();
 
     const alerts = tracker.update({
       label,
@@ -85,9 +92,27 @@ export default function App() {
       distance: result.distance,
       bearing: result.bearing,
       timestamp: Date.now(),
+      lat: fix?.lat ?? null,
+      lon: fix?.lon ?? null,
+      locationAccuracy: fix?.accuracy ?? null,
+      isUnknownBuild: result.openSet.isUnknownBuild,
+      estFundamentalHz: result.openSet.estFundamentalHz,
+      sizeClass: result.openSet.sizeClass,
+      oodScore: result.openSet.oodScore,
     });
 
     setThreats(tracker.getActiveThreats());
+
+    // Notify on every NEW intercept so a minimized/backgrounded operator is alerted.
+    for (const a of alerts) {
+      if (a.type === 'new_threat') {
+        const d = a.threat.distance;
+        notifyIntercept(
+          `New contact: ${a.threat.type}`,
+          `~${Math.round(d * 0.65)}–${Math.round(d * 1.55)} ft • ${Math.round(a.threat.confidence)}% confidence`
+        );
+      }
+    }
 
     if (alerts.length > 0) {
       const newOrApproach = alerts.find((a) => a.type === 'new_threat' || a.type === 'approaching');
@@ -107,6 +132,7 @@ export default function App() {
     if (!audio) return;
     if (isMonitoring) {
       await audio.stopMonitoring();
+      stopLocation();
       setMonitoring(false);
       setStatus('Stopped.');
       setLevel(0);
@@ -115,6 +141,12 @@ export default function App() {
         trackerRef.current?.setThresholds({ minConfidence: settings.alertConfidence });
         sessionStartRef.current = Date.now();
         setPeakLevel(0);
+        // Permissions + GPS for intercept alerts and stamping (best-effort).
+        await initNotifications();
+        await initLocation();
+        await startLocation();
+        const fix = getLastFix();
+        sessionOriginRef.current = fix ? { lat: fix.lat, lon: fix.lon, accuracy: fix.accuracy } : null;
         await audio.startMonitoring(onWindow);
         setMonitoring(true);
         setStatus('Monitoring — listening for airborne contacts…');
@@ -133,6 +165,7 @@ export default function App() {
         startTime: sessionStartRef.current || Date.now(),
         endTime: Date.now(),
         threats: tracker.getSessionLog(),
+        origin: sessionOriginRef.current,
       });
       await Share.share({ url: uri, message: 'Corvus Sentinel After-Action Report' });
     } catch (e) {
@@ -169,8 +202,12 @@ export default function App() {
           lastAlert={lastAlert}
           onToggle={toggle}
           onReport={onReport}
+          onSelectThreat={(t) => setSelectedThreat(t)}
           onNavigate={(sc) => setScreen(sc)}
         />
+      )}
+      {selectedThreat && (
+        <ContactDetailScreen threat={selectedThreat} onClose={() => setSelectedThreat(null)} />
       )}
       {screen === 'settings' && (
         <SettingsScreen settings={settings} onChange={patchSettings} onBack={() => setScreen('sentinel')} />

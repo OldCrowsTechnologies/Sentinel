@@ -11,10 +11,16 @@ export interface SessionReport {
   startTime: number;
   endTime: number;
   threats: Threat[];
+  origin?: { lat: number; lon: number; accuracy: number | null } | null; // operator position
 }
 
 function fmt(ts: number): string {
   return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + 'Z';
+}
+
+function loc(lat?: number | null, lon?: number | null): string {
+  if (lat == null || lon == null) return 'n/a';
+  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 }
 
 export function buildReportHtml(report: SessionReport): string {
@@ -24,11 +30,12 @@ export function buildReportHtml(report: SessionReport): string {
       return `<tr>
         <td>${t.type}</td>
         <td>${Math.round(t.confidence)}%</td>
-        <td>~${Math.round(t.distance)} ft</td>
+        <td>~${Math.round(t.distance * 0.65)}&ndash;${Math.round(t.distance * 1.55)} ft</td>
         <td>${t.bearing >= 0 ? Math.round(t.bearing) + '°' : 'n/a'}</td>
         <td>${t.status}</td>
         <td>${fmt(t.firstSeen)}</td>
         <td>${dur}s</td>
+        <td>${loc(t.lat, t.lon)}</td>
       </tr>`;
     })
     .join('');
@@ -51,13 +58,14 @@ export function buildReportHtml(report: SessionReport): string {
   <div class="meta">
     Session start: ${fmt(report.startTime)}<br>
     Session end: ${fmt(report.endTime)}<br>
+    Operator position: ${report.origin ? loc(report.origin.lat, report.origin.lon) : 'n/a'}<br>
     Duration: ${durMin} min &nbsp;|&nbsp; Total contacts: ${total}
   </div>
   ${
     total > 0
       ? `<table><thead><tr>
-          <th>Type</th><th>Peak Conf.</th><th>Closest</th><th>Bearing</th>
-          <th>Status</th><th>First Seen</th><th>Track Dur.</th>
+          <th>Type</th><th>Peak Conf.</th><th>Range (est)</th><th>Bearing</th>
+          <th>Status</th><th>First Seen (UTC)</th><th>Track Dur.</th><th>Operator GPS</th>
         </tr></thead><tbody>${rows}</tbody></table>`
       : `<div class="empty">No contacts detected during this session.</div>`
   }

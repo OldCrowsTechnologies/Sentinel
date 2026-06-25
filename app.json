@@ -22,6 +22,7 @@
       "bundleIdentifier": "com.oldcrowswireless.corvussentinel",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Corvus Sentinel requires microphone access to detect and classify aerial threats in real time.",
+        "NSLocationWhenInUseUsageDescription": "Corvus Sentinel uses your location to stamp intercepts and support triangulation.",
         "UIBackgroundModes": [
           "audio"
         ]
@@ -40,6 +41,8 @@
         "android.permission.FOREGROUND_SERVICE_MICROPHONE",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.INTERNET"
       ]
     },

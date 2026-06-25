@@ -7,7 +7,7 @@
  * verified identical to the trainer (training/verify_parity.*).
  */
 
-import { extractFeatures } from './dsp';
+import { extractFeatures, estimateDominantHz } from './dsp';
 import type { DspConfig } from './dsp';
 
 export interface CorvusLayer {
@@ -32,6 +32,39 @@ export interface CorvusModel {
   featureDim: number;
   scaler: { mean: number[]; scale: number[] };
   mlp: { layers: CorvusLayer[] };
+  openSet?: OpenSetConfig;
+}
+
+export interface OpenSetClassStat {
+  label: string;
+  count: number;
+  centroid: number[]; // in standardized feature space
+  variance: number[];
+}
+
+export interface OpenSetConfig {
+  classStats: OpenSetClassStat[];
+  noneIndex: number;
+  unknownIndex: number;
+  specificDroneIndices: number[];
+  thresholds: { droneGate: number; matchProb: number; oodDistance: number };
+}
+
+export const UNKNOWN_BUILD_LABEL = 'Unknown build';
+
+export type DroneCategory = 'electric-multirotor' | 'unknown';
+export type SizeClass = 'small' | 'medium' | 'large';
+
+/** Open-set recognition result: is it a drone, and is it a KNOWN drone? */
+export interface OpenSetVerdict {
+  dronePresent: boolean;
+  droneness: number; // 1 - P(None)
+  isUnknownBuild: boolean; // drone present, but not a confident library match
+  matchedModel: string | null; // known model label when matched
+  oodScore: number; // nearest-known normalized distance (higher = more novel)
+  category: DroneCategory;
+  estFundamentalHz: number | null; // acoustic "possible spec" for unknown builds
+  sizeClass: SizeClass | null; // coarse size from the rotor fundamental
 }
 
 export interface ClassificationResult {
@@ -45,6 +78,7 @@ export interface ClassificationResult {
   distanceMax: number; // upper bound of the (wide) range band, feet
   bearing: number; // -1 = unknown (single mic: no direction-finding)
   timestamp: number;
+  openSet: OpenSetVerdict;
 }
 
 /** Standardize a feature vector: (x - mean) / scale. */
@@ -148,8 +182,16 @@ export class DroneClassifier {
     for (let i = 0; i < samples.length; i++) sq += (samples[i] as number) * (samples[i] as number);
     const rms = Math.sqrt(sq / Math.max(1, samples.length));
 
-    const label = this.model.labels[classIdx];
-    const distance = this.estimateDistance(rms, label);
+    const rawLabel = this.model.labels[classIdx];
+    const verdict = this.openSetVerdict(x, probs, samples);
+
+    // The reported label is the OPEN-SET verdict, not the raw argmax: a known
+    // model when confidently matched, else "Unknown build" when a drone is
+    // present but not in our library, else the raw label (e.g. "None").
+    const label = verdict.dronePresent
+      ? verdict.matchedModel ?? UNKNOWN_BUILD_LABEL
+      : rawLabel;
+    const distance = this.estimateDistance(rms, verdict.matchedModel ?? rawLabel);
 
     return {
       label,
@@ -165,6 +207,94 @@ export class DroneClassifier {
       distanceMax: Math.min(1500, Math.round(distance * 1.55)),
       bearing: -1, // single mic: no direction-finding
       timestamp: Date.now(),
+      openSet: verdict,
+    };
+  }
+
+  /**
+   * Open-set recognition: decide whether a drone is present, whether it's a
+   * confident match to a KNOWN library model, or a novel/"unknown build", and
+   * attach a coarse acoustic "possible spec". Degrades gracefully on a model
+   * with no openSet block (treats the raw argmax as the verdict).
+   */
+  private openSetVerdict(
+    x: Float64Array,
+    probs: number[],
+    samples: Float32Array | number[]
+  ): OpenSetVerdict {
+    const os = this.model.openSet;
+    if (!os) {
+      let ci = 0;
+      for (let i = 1; i < probs.length; i++) if (probs[i] > probs[ci]) ci = i;
+      const lbl = this.model.labels[ci];
+      const present = lbl !== 'None';
+      return {
+        dronePresent: present,
+        droneness: present ? probs[ci] : 0,
+        isUnknownBuild: lbl === 'Unknown',
+        matchedModel: present && lbl !== 'Unknown' ? lbl : null,
+        oodScore: 0,
+        category: present ? 'electric-multirotor' : 'unknown',
+        estFundamentalHz: null,
+        sizeClass: null,
+      };
+    }
+
+    const { noneIndex, specificDroneIndices, classStats, thresholds } = os;
+    const droneness = noneIndex >= 0 ? 1 - probs[noneIndex] : Math.max(...probs);
+    const dronePresent = droneness >= thresholds.droneGate;
+
+    // Nearest known specific-drone class by variance-normalized distance (OOD).
+    let oodScore = Infinity;
+    let bestSpecific = -1;
+    let bestSpecificProb = -1;
+    for (const c of specificDroneIndices) {
+      const st = classStats[c];
+      let acc = 0;
+      for (let i = 0; i < x.length; i++) {
+        const d = x[i] - st.centroid[i];
+        acc += (d * d) / st.variance[i];
+      }
+      const dist = Math.sqrt(acc / x.length);
+      if (dist < oodScore) oodScore = dist;
+      if (probs[c] > bestSpecificProb) {
+        bestSpecificProb = probs[c];
+        bestSpecific = c;
+      }
+    }
+    if (!isFinite(oodScore)) oodScore = 999;
+
+    let matchedModel: string | null = null;
+    let isUnknownBuild = false;
+    if (dronePresent) {
+      const goodMatch =
+        bestSpecific >= 0 &&
+        bestSpecificProb >= thresholds.matchProb &&
+        oodScore <= thresholds.oodDistance;
+      if (goodMatch) matchedModel = this.model.labels[bestSpecific];
+      else isUnknownBuild = true;
+    }
+
+    // Acoustic "possible spec" estimate (diagnostic only) for unknown builds.
+    let estFundamentalHz: number | null = null;
+    let sizeClass: SizeClass | null = null;
+    if (dronePresent) {
+      const hz = estimateDominantHz(samples, this.cfg);
+      if (hz > 0) {
+        estFundamentalHz = Math.round(hz);
+        sizeClass = hz >= 1400 ? 'small' : hz >= 900 ? 'medium' : 'large';
+      }
+    }
+
+    return {
+      dronePresent,
+      droneness,
+      isUnknownBuild,
+      matchedModel,
+      oodScore,
+      category: dronePresent ? 'electric-multirotor' : 'unknown',
+      estFundamentalHz,
+      sizeClass,
     };
   }
 

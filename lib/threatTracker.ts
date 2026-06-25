@@ -20,6 +20,16 @@ export interface Threat {
   lastSeen: number;
   status: 'approaching' | 'receding' | 'static' | 'unknown';
   trajectory: TrajectoryPoint[];
+  // Operator GPS position at first detection (for the report + future
+  // triangulation). Null when location is unavailable / permission denied.
+  lat?: number | null;
+  lon?: number | null;
+  locationAccuracy?: number | null;
+  // Open-set verdict fields (for the Contact Detail card).
+  isUnknownBuild?: boolean;
+  estFundamentalHz?: number | null;
+  sizeClass?: 'small' | 'medium' | 'large' | null;
+  oodScore?: number | null;
 }
 
 export interface AlertEvent {
@@ -36,6 +46,13 @@ export interface Detection {
   distance: number;
   bearing: number;
   timestamp: number;
+  lat?: number | null;
+  lon?: number | null;
+  locationAccuracy?: number | null;
+  isUnknownBuild?: boolean;
+  estFundamentalHz?: number | null;
+  sizeClass?: 'small' | 'medium' | 'large' | null;
+  oodScore?: number | null;
 }
 
 export class ThreatTracker {
@@ -80,6 +97,13 @@ export class ThreatTracker {
           lastSeen: ts,
           status: 'unknown',
           trajectory: [{ distance: d.distance, confidence: d.confidence, timestamp: ts }],
+          lat: d.lat ?? null,
+          lon: d.lon ?? null,
+          locationAccuracy: d.locationAccuracy ?? null,
+          isUnknownBuild: d.isUnknownBuild ?? false,
+          estFundamentalHz: d.estFundamentalHz ?? null,
+          sizeClass: d.sizeClass ?? null,
+          oodScore: d.oodScore ?? null,
         };
         this.threats.set(threat.id, threat);
         this.sessionLog.push(threat);
@@ -97,6 +121,11 @@ export class ThreatTracker {
       existing.bearing = d.bearing;
       existing.confidence = Math.max(existing.confidence, d.confidence);
       existing.lastSeen = ts;
+      // Refresh the latest acoustic estimates for the detail card.
+      if (d.isUnknownBuild != null) existing.isUnknownBuild = d.isUnknownBuild;
+      if (d.estFundamentalHz != null) existing.estFundamentalHz = d.estFundamentalHz;
+      if (d.sizeClass != null) existing.sizeClass = d.sizeClass;
+      if (d.oodScore != null) existing.oodScore = d.oodScore;
       existing.trajectory.push({ distance: d.distance, confidence: d.confidence, timestamp: ts });
       if (existing.trajectory.length > 60) existing.trajectory.shift();
 

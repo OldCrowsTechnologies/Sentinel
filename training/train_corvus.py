@@ -127,8 +127,52 @@ def featurize(waves):
     return X
 
 
-def export_model(clf, mean, scale, path):
-    """Serialize standardizer + MLP + DSP config to a single JSON file."""
+def build_open_set(Xs, y):
+    """Per-class statistics in STANDARDIZED feature space, used on-device for
+    open-set recognition: deciding a contact is a drone but NOT in our library
+    (-> "possible homemade / unknown build"). For each class we export the
+    centroid + diagonal variance; the device computes a variance-normalized
+    distance to each known *specific* drone class and flags novelty when the
+    nearest known class is too far (or the match probability too low).
+    """
+    stats = []
+    for c in range(len(LABELS)):
+        mask = y == c
+        if not np.any(mask):
+            stats.append({"label": LABELS[c], "count": 0,
+                          "centroid": [0.0] * FEATURE_DIM,
+                          "variance": [1.0] * FEATURE_DIM})
+            continue
+        Xc = Xs[mask]
+        centroid = Xc.mean(axis=0)
+        # floor the variance so a near-constant feature can't dominate the metric
+        variance = np.maximum(Xc.var(axis=0), 1e-2)
+        stats.append({
+            "label": LABELS[c],
+            "count": int(mask.sum()),
+            "centroid": [float(v) for v in centroid],
+            "variance": [float(v) for v in variance],
+        })
+
+    none_idx = LABELS.index("None") if "None" in LABELS else -1
+    unknown_idx = LABELS.index("Unknown") if "Unknown" in LABELS else -1
+    specific = [i for i in range(len(LABELS)) if i not in (none_idx, unknown_idx)]
+
+    return {
+        "classStats": stats,
+        "noneIndex": none_idx,
+        "unknownIndex": unknown_idx,
+        "specificDroneIndices": specific,
+        # Provisional thresholds (tune on real audio):
+        #   droneGate     : 1 - P(None) above this => a drone is present
+        #   matchProb     : best specific-class prob below this => not a confident match
+        #   oodDistance   : nearest-known normalized distance above this => out-of-distribution
+        "thresholds": {"droneGate": 0.5, "matchProb": 0.6, "oodDistance": 2.5},
+    }
+
+
+def export_model(clf, mean, scale, Xs, y, path):
+    """Serialize standardizer + MLP + DSP config + open-set stats to one JSON."""
     layers = []
     n_layers = len(clf.coefs_)
     for i, (W, b) in enumerate(zip(clf.coefs_, clf.intercepts_)):
@@ -139,7 +183,7 @@ def export_model(clf, mean, scale, path):
         })
 
     model = {
-        "version": 1,
+        "version": 2,
         "format": "corvus-mlp-json",
         "labels": LABELS,
         "dsp": {
@@ -154,6 +198,7 @@ def export_model(clf, mean, scale, path):
         "featureDim": FEATURE_DIM,
         "scaler": {"mean": [float(v) for v in mean], "scale": [float(v) for v in scale]},
         "mlp": {"layers": layers},
+        "openSet": build_open_set(Xs, y),
     }
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
@@ -220,7 +265,7 @@ def main():
     print("labels:", names)
     print(confusion_matrix(yte, yp, labels=present))
 
-    size = export_model(clf, mean, scale, OUT_PATH)
+    size = export_model(clf, mean, scale, Xs, y, OUT_PATH)
     print(f"\nExported model -> {os.path.normpath(OUT_PATH)} ({size/1024:.1f} KB)")
     print("Feature dim:", FEATURE_DIM, "| Labels:", LABELS)
 
