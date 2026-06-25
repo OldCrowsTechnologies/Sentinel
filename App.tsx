@@ -9,6 +9,7 @@ import ContactDetailScreen from './app/ContactDetailScreen';
 import RemoteIdScreen from './app/RemoteIdScreen';
 import MapScreen from './app/MapScreen';
 import TrainingCaptureScreen from './app/TrainingCaptureScreen';
+import AnalysisScreen from './app/AnalysisScreen';
 
 import AudioCaptureService from './lib/audioCapture';
 import DroneClassifier, { CorvusModel } from './lib/mlClassifier';
@@ -22,7 +23,7 @@ import { syncPending } from './lib/specimenSync';
 import { logDetection } from './lib/missionLog';
 import corvusModelJson from './assets/models/corvus-model.json';
 
-type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map' | 'training';
+type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map' | 'training' | 'analysis';
 
 const API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY || '';
 const SILENCE_RMS = 0.004; // below this, treat window as silence (force "None")
@@ -292,6 +293,7 @@ export default function App() {
         <MapScreen onBack={() => setScreen('sentinel')} operator={getLastFix()} threats={threats} />
       )}
       {screen === 'training' && <TrainingCaptureScreen onBack={() => setScreen('sentinel')} />}
+      {screen === 'analysis' && <AnalysisScreen onBack={() => setScreen('sentinel')} />}
     </View>
   );
 }
