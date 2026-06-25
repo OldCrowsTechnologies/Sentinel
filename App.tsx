@@ -15,6 +15,8 @@ import CorvusVoice from './lib/corvusVoice';
 import { writeReport } from './lib/reportGenerator';
 import { initNotifications, notifyIntercept } from './lib/notifications';
 import { initLocation, startLocation, stopLocation, getLastFix } from './lib/locationService';
+import { saveSpecimen, pendingCount } from './lib/specimenStore';
+import { syncPending } from './lib/specimenSync';
 import corvusModelJson from './assets/models/corvus-model.json';
 
 type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid';
@@ -46,8 +48,38 @@ export default function App() {
   const voiceRef = useRef<CorvusVoice | null>(null);
   const sessionStartRef = useRef<number>(0);
   const sessionOriginRef = useRef<{ lat: number; lon: number; accuracy: number | null } | null>(null);
+  const latestWindowRef = useRef<Float32Array | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+
+  const [specimenCount, setSpecimenCount] = useState(0);
+
+  // Capture an unknown/homemade contact's audio window + verdict into the local
+  // specimen library (the learning flywheel). Auto on new unknown builds; also
+  // available manually from the Contact Detail card.
+  const captureSpecimen = useCallback((t: Threat) => {
+    const win = latestWindowRef.current;
+    if (!win) return;
+    saveSpecimen(
+      {
+        timestamp: Date.now(),
+        label: t.type,
+        isUnknownBuild: !!t.isUnknownBuild,
+        confidence: t.confidence,
+        estFundamentalHz: t.estFundamentalHz ?? null,
+        sizeClass: t.sizeClass ?? null,
+        oodScore: t.oodScore ?? null,
+        distance: t.distance,
+        lat: t.lat ?? null,
+        lon: t.lon ?? null,
+      },
+      win,
+      corvusModelJson.dsp.sampleRate
+    )
+      .then(() => pendingCount())
+      .then(setSpecimenCount)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     try {
@@ -63,6 +95,7 @@ export default function App() {
       });
       setModelReady(clf.ready());
       setStatus(clf.ready() ? 'Ready. Model loaded.' : 'Model failed to load.');
+      pendingCount().then(setSpecimenCount).catch(() => {});
     } catch (e) {
       setStatus('Init error: ' + String(e));
     }
@@ -78,6 +111,8 @@ export default function App() {
     const clf = clfRef.current;
     const tracker = trackerRef.current;
     if (!clf || !tracker) return;
+
+    latestWindowRef.current = win; // keep the latest window for specimen capture
 
     const lvl = Math.min(1, rms * 12);
     setLevel(lvl);
@@ -112,6 +147,8 @@ export default function App() {
           `New contact: ${a.threat.type}`,
           `~${Math.round(d * 0.65)}–${Math.round(d * 1.55)} ft • ${Math.round(a.threat.confidence)}% confidence`
         );
+        // Auto-capture unknown/homemade builds into the specimen library.
+        if (a.threat.isUnknownBuild) captureSpecimen(a.threat);
       }
     }
 
@@ -148,6 +185,8 @@ export default function App() {
         await startLocation();
         const fix = getLastFix();
         sessionOriginRef.current = fix ? { lat: fix.lat, lon: fix.lon, accuracy: fix.accuracy } : null;
+        // Flush any queued specimens to the shared library if a network is up.
+        syncPending().then(() => pendingCount()).then(setSpecimenCount).catch(() => {});
         await audio.startMonitoring(onWindow);
         setMonitoring(true);
         setStatus('Monitoring — listening for airborne contacts…');
@@ -199,6 +238,7 @@ export default function App() {
           level={level}
           peakLevel={peakLevel}
           onResetPeak={() => setPeakLevel(0)}
+          specimenCount={specimenCount}
           threats={threats}
           lastAlert={lastAlert}
           onToggle={toggle}
@@ -208,7 +248,11 @@ export default function App() {
         />
       )}
       {selectedThreat && (
-        <ContactDetailScreen threat={selectedThreat} onClose={() => setSelectedThreat(null)} />
+        <ContactDetailScreen
+          threat={selectedThreat}
+          onClose={() => setSelectedThreat(null)}
+          onRecord={captureSpecimen}
+        />
       )}
       {screen === 'settings' && (
         <SettingsScreen settings={settings} onChange={patchSettings} onBack={() => setScreen('sentinel')} />

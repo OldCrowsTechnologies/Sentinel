@@ -19,10 +19,13 @@ function fmt(ts: number): string {
 export default function ContactDetailScreen({
   threat,
   onClose,
+  onRecord,
 }: {
   threat: Threat;
   onClose: () => void;
+  onRecord: (t: Threat) => void;
 }) {
+  const [recorded, setRecorded] = React.useState(false);
   const ref = getReference(threat.type);
   const unknown = !ref; // no library entry => treat as unknown/homemade build
   const band = `~${Math.round(threat.distance * 0.65)}–${Math.round(threat.distance * 1.55)} ft`;
@@ -102,7 +105,17 @@ export default function ContactDetailScreen({
           <Spec k="Operator GPS" v={gps} />
         </View>
 
-        <TouchableOpacity onPress={onClose} style={s.btn}>
+        <TouchableOpacity
+          style={[s.btn, { backgroundColor: recorded ? COLORS.tealDark : COLORS.gold }]}
+          disabled={recorded}
+          onPress={() => {
+            onRecord(threat);
+            setRecorded(true);
+          }}
+        >
+          <Text style={s.btnText}>{recorded ? 'RECORDED TO LIBRARY ✓' : 'RECORD TO LIBRARY'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onClose} style={[s.btn, { backgroundColor: COLORS.tealLight, marginTop: 10 }]}>
           <Text style={s.btnText}>CLOSE</Text>
         </TouchableOpacity>
       </ScrollView>

@@ -10,6 +10,7 @@ export interface SentinelProps {
   level: number; // 0..1 input level meter
   peakLevel: number; // 0..1 peak-hold for the rotate-to-peak locate aid
   onResetPeak: () => void;
+  specimenCount: number; // unknown-build captures in the local library
   threats: Threat[];
   lastAlert: AlertEvent | null;
   onToggle: () => void;
@@ -25,7 +26,7 @@ const sevColor = (d: number) => (d < 150 ? COLORS.danger : d < 300 ? COLORS.warn
 const rangeBand = (d: number) => `~${Math.max(30, Math.round(d * 0.65))}–${Math.min(1500, Math.round(d * 1.55))} ft`;
 
 export default function SentinelScreen(props: SentinelProps) {
-  const { isMonitoring, modelReady, statusText, level, peakLevel, threats, lastAlert } = props;
+  const { isMonitoring, modelReady, statusText, level, peakLevel, specimenCount, threats, lastAlert } = props;
   return (
     <View style={s.container}>
       <View style={s.header}>
@@ -36,6 +37,9 @@ export default function SentinelScreen(props: SentinelProps) {
       </View>
 
       <Text style={s.status}>{statusText}</Text>
+      {specimenCount > 0 && (
+        <Text style={s.specimens}>Specimen library: {specimenCount} unknown-build capture{specimenCount === 1 ? '' : 's'}</Text>
+      )}
 
       <View style={s.meterTrack}>
         <View style={[s.meterFill, { width: `${Math.min(100, Math.round(level * 100))}%` }]} />
@@ -140,6 +144,7 @@ const s = StyleSheet.create({
   badge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14 },
   badgeText: { fontSize: 11, fontWeight: '700', color: COLORS.darkNavy },
   status: { color: COLORS.muted, fontSize: 12, marginTop: 10 },
+  specimens: { color: COLORS.gold, fontSize: 11, marginTop: 4 },
   meterTrack: { height: 6, backgroundColor: COLORS.panel, borderRadius: 3, marginTop: 6, marginBottom: 14, position: 'relative' },
   meterFill: { height: 6, backgroundColor: COLORS.tealLight, borderRadius: 3 },
   peakMarker: { position: 'absolute', top: -2, width: 3, height: 10, backgroundColor: COLORS.gold, borderRadius: 1 },
