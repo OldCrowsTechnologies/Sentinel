@@ -16,7 +16,7 @@ export interface SentinelProps {
   onToggle: () => void;
   onReport: () => void;
   onSelectThreat: (threat: Threat) => void;
-  onNavigate: (screen: 'settings' | 'detections' | 'remoteid' | 'map') => void;
+  onNavigate: (screen: 'settings' | 'detections' | 'remoteid' | 'map' | 'training') => void;
 }
 
 const sevColor = (d: number) => (d < 150 ? COLORS.danger : d < 300 ? COLORS.warning : COLORS.tealLight);
@@ -131,6 +131,9 @@ export default function SentinelScreen(props: SentinelProps) {
         </TouchableOpacity>
       </View>
       <View style={s.controls}>
+        <TouchableOpacity style={[s.btnSec]} onPress={() => props.onNavigate('training')}>
+          <Text style={s.btnSecText}>CAPTURE</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={[s.btnSec]} onPress={() => props.onNavigate('detections')}>
           <Text style={s.btnSecText}>SESSION LOG</Text>
         </TouchableOpacity>

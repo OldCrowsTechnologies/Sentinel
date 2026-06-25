@@ -8,6 +8,7 @@ import DetectionsScreen from './app/DetectionsScreen';
 import ContactDetailScreen from './app/ContactDetailScreen';
 import RemoteIdScreen from './app/RemoteIdScreen';
 import MapScreen from './app/MapScreen';
+import TrainingCaptureScreen from './app/TrainingCaptureScreen';
 
 import AudioCaptureService from './lib/audioCapture';
 import DroneClassifier, { CorvusModel } from './lib/mlClassifier';
@@ -21,7 +22,7 @@ import { syncPending } from './lib/specimenSync';
 import { logDetection } from './lib/missionLog';
 import corvusModelJson from './assets/models/corvus-model.json';
 
-type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map';
+type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map' | 'training';
 
 const API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY || '';
 const SILENCE_RMS = 0.004; // below this, treat window as silence (force "None")
@@ -262,7 +263,15 @@ export default function App() {
           onToggle={toggle}
           onReport={onReport}
           onSelectThreat={(t) => setSelectedThreat(t)}
-          onNavigate={(sc) => setScreen(sc)}
+          onNavigate={(sc) => {
+            // Training capture needs the mic exclusively — stop live monitoring.
+            if (sc === 'training' && isMonitoring) {
+              audioRef.current?.stopMonitoring();
+              setMonitoring(false);
+              setLevel(0);
+            }
+            setScreen(sc);
+          }}
         />
       )}
       {selectedThreat && (
@@ -282,6 +291,7 @@ export default function App() {
       {screen === 'map' && (
         <MapScreen onBack={() => setScreen('sentinel')} operator={getLastFix()} threats={threats} />
       )}
+      {screen === 'training' && <TrainingCaptureScreen onBack={() => setScreen('sentinel')} />}
     </View>
   );
 }
