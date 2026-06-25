@@ -11,7 +11,8 @@
     "build:android:prod": "eas build --platform android --profile production",
     "parity": "bash training/run_parity.sh",
     "train": "python3 training/train_corvus.py",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test \"tests/**/*.test.mjs\""
   },
   "dependencies": {
     "@maplibre/maplibre-react-native": "^10.4.2",
