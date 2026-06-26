@@ -10,6 +10,12 @@ can't pry/snap the phone's USB-C port (the real failure mode).
 - **`corvus-sdr-cradle.scad`** — parametric source (OpenSCAD). Edit dimensions, F6, Export STL.
 - **`make_cradle_stl.py`** — regenerates the STL from Python (`pip install trimesh manifold3d`).
 
+**Magnetic puck** (for MagSafe-style cases, e.g. UAG Metropolis LT w/ magnet):
+- **`corvus-magnet-puck-s24u.stl`** + **`make_magnet_puck.py`** — 60 mm disc, SDR cradle
+  on the front, lanyard hole. Stick a **56 mm adhesive MagSafe ring** (or a steel MagSafe
+  plate, ~$6) to the flat back; it then snaps to the case's magnet. Print FLAT (back on
+  bed), cradle up — no supports. Run a thin lanyard/zip-tie through the hole as drop insurance.
+
 **Phone-specific "boot" mounts** (grip the bottom of the phone, SDR on the back):
 - **`corvus-mount-s24-ultra.stl`** + **`preview-s24-ultra.png`** — Galaxy S24 Ultra (79.0 × 8.6 mm grip).
 - **`corvus-mount-s26-ultra.stl`** + **`preview-s26-ultra.png`** — Galaxy S26 Ultra (78.1 × 7.9 mm grip).
