@@ -5,9 +5,18 @@ phone or rugged case, with **USB-cable strain relief** so a knock on the antenna
 can't pry/snap the phone's USB-C port (the real failure mode).
 
 ## Files
+**Universal strap cradle** (fits any phone):
 - **`corvus-sdr-cradle.stl`** — ready to slice & print (51 × 43 × 11 mm).
 - **`corvus-sdr-cradle.scad`** — parametric source (OpenSCAD). Edit dimensions, F6, Export STL.
 - **`make_cradle_stl.py`** — regenerates the STL from Python (`pip install trimesh manifold3d`).
+
+**Phone-specific "boot" mounts** (grip the bottom of the phone, SDR on the back):
+- **`corvus-mount-s24-ultra.stl`** + **`preview-s24-ultra.png`** — Galaxy S24 Ultra (79.0 × 8.6 mm grip).
+- **`corvus-mount-s26-ultra.stl`** + **`preview-s26-ultra.png`** — Galaxy S26 Ultra (78.1 × 7.9 mm grip).
+- **`make_phone_mounts.py`** — regenerates both STLs + previews.
+- IMPORTANT: cavities are sized for the **bare phone + 1.2 mm**. If you run a case,
+  add the case thickness to the dims in `make_phone_mounts.py` (or the grip won't fit).
+  **Print in TPU** so it flexes onto the phone without stressing the glass.
 
 ## ⚠️ Verify the dongle size FIRST
 Published specs for the Nano 3 **conflict** (~17 mm vs ~25 mm body length). Before
