@@ -25,7 +25,9 @@ import corvusModelJson from './assets/models/corvus-model.json';
 
 type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map' | 'training' | 'analysis';
 
-const API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY || '';
+// NOTE: the ElevenLabs key is NEVER bundled here. Any EXPO_PUBLIC_* var is baked
+// into the APK and is trivially extractable, so voice synthesis is proxied
+// server-side via ocws-site (/api/corvus/tts). See lib/corvusVoice.ts.
 const SILENCE_RMS = 0.004; // below this, treat window as silence (force "None")
 
 export default function App() {
@@ -43,7 +45,6 @@ export default function App() {
     voiceEnabled: true,
     hapticsEnabled: true,
     alertConfidence: 85,
-    hasApiKey: API_KEY.length > 0,
   });
 
   const audioRef = useRef<AudioCaptureService | null>(null);
@@ -91,7 +92,7 @@ export default function App() {
       clfRef.current = clf;
       trackerRef.current = new ThreatTracker();
       trackerRef.current.setThresholds({ minConfidence: settings.alertConfidence });
-      voiceRef.current = new CorvusVoice(API_KEY);
+      voiceRef.current = new CorvusVoice({ enabled: settings.voiceEnabled });
       audioRef.current = new AudioCaptureService({
         sampleRate: corvusModelJson.dsp.sampleRate,
         windowSec: corvusModelJson.dsp.clipSec,
@@ -240,7 +241,7 @@ export default function App() {
         trackerRef.current?.setThresholds({ minConfidence: patch.alertConfidence });
       }
       if (patch.voiceEnabled != null && voiceRef.current) {
-        voiceRef.current.setApiKey(patch.voiceEnabled ? API_KEY : '');
+        voiceRef.current.setEnabled(patch.voiceEnabled);
       }
       return next;
     });

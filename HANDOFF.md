@@ -42,7 +42,8 @@ WORKING + VERIFIED (in this sandbox, Python+Node):
 - Android background monitoring: mic foreground service + persistent notification
   + interruption handling.
 - Threat tracking (dedup, trajectory, approach, severity, lifecycle) — unit-smoke-tested.
-- Corvus voice briefs (ElevenLabs) with haptic/console fallback when no API key.
+- Corvus voice briefs (server-side ElevenLabs proxy /api/corvus/tts — no key on
+  device) with haptic/console fallback.
 - HTML After-Action Report export. OCWS-branded UI (3 screens).
 - Retraining pipeline that accepts real WAVs; graceful synthetic fallback.
 
@@ -69,7 +70,7 @@ lib/
   mlClassifier.ts        # loads JSON brain; standardize + MLP + softmax (pure TS)
   audioCapture.ts        # AudioRecorder -> analysis windows; Android FGS notification
   threatTracker.ts       # dedup / trajectory / alerts (mono: dedup by type+distance)
-  corvusVoice.ts         # ElevenLabs TTS + expo-haptics
+  corvusVoice.ts         # TTS via server proxy (/api/corvus/tts) + expo-haptics
   reportGenerator.ts     # HTML After-Action Report (expo-file-system)
   theme.ts               # OCWS palette
 assets/

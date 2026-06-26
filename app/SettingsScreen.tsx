@@ -7,7 +7,6 @@ export interface SettingsState {
   voiceEnabled: boolean;
   hapticsEnabled: boolean;
   alertConfidence: number; // %
-  hasApiKey: boolean;
 }
 
 export interface SettingsProps {
@@ -27,9 +26,9 @@ export default function SettingsScreen({ settings, onChange, onBack }: SettingsP
         <Switch value={settings.voiceEnabled} onValueChange={(v) => onChange({ voiceEnabled: v })} />
       </View>
       <Text style={s.hint}>
-        {settings.hasApiKey
-          ? 'ElevenLabs key detected — full voice enabled.'
-          : 'No ELEVENLABS_API_KEY — briefs log to console + haptics only.'}
+        Spoken briefs are synthesized securely via Old Crows Wireless — no API key
+        is stored on this device. Audible voice activates in production; until then
+        briefs deliver as on-screen alerts + haptics.
       </Text>
 
       <View style={s.row}>

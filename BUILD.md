@@ -56,7 +56,7 @@ cd "Corvus Sentinel"
 npm install
 npx expo install --fix     # snap native module versions to the SDK
 npx expo-doctor            # should report no critical issues
-cp .env.example .env       # optional: add EXPO_PUBLIC_ELEVENLABS_API_KEY
+cp .env.example .env       # optional non-secret overrides (URLs only)
 ```
 
 ## 3. Link to the existing Expo project
@@ -91,16 +91,18 @@ sideload directly, no Play Store.
    (type, confidence %, rough distance).
 4. Tap **REPORT** to generate + share the After-Action Report (HTML).
 
-## 6. Voice briefs (optional)
+## 6. Voice briefs
 
-Add an ElevenLabs key to `.env`:
+Corvus voice is synthesized **server-side**. The ElevenLabs key is held by
+ocws-site (`ELEVENLABS_API_KEY` in server env) behind `/api/corvus/tts` — it is
+**never** bundled in the app. Any `EXPO_PUBLIC_*` var is baked into the APK and
+is trivially extractable, so no key belongs on the device.
 
-```
-EXPO_PUBLIC_ELEVENLABS_API_KEY=sk_xxx
-```
-
-Rebuild. Without a key, briefs still fire as on-screen alerts + haptics
-(locked Corvus voice ID `Oq6YjhFgak69fZQyDSCd` is used when a key is present).
+Audible TTS is disabled pre-production; briefs fire as on-screen alerts +
+haptics. When restored, `lib/corvusVoice.ts` POSTs the brief text to the proxy
+and plays the returned audio (locked Corvus voice ID `Oq6YjhFgak69fZQyDSCd` is
+selected on the server). Override the proxy URL for non-prod backends via
+`EXPO_PUBLIC_CORVUS_TTS_URL` (a URL, not a secret).
 
 ---
 

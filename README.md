@@ -21,7 +21,7 @@ Expo / React Native; ships as a sideloadable Android APK.
 - **Real microphone pipeline.** 16 kHz mono PCM via `react-native-audio-api`,
   windowed and classified continuously.
 - **Threat tracking + briefs.** Dedup, trajectory, approach detection, severity,
-  Corvus voice (ElevenLabs) with haptic fallback.
+  Corvus voice (server-side ElevenLabs proxy — no key on device) with haptic fallback.
 - **After-Action Report.** One-tap OCWS-branded HTML session report.
 
 > The bundled model is trained on **synthetic** (physically-grounded) audio so
@@ -43,7 +43,7 @@ Corvus Sentinel/
 │   ├── mlClassifier.ts     # loads JSON brain, MLP forward + softmax
 │   ├── audioCapture.ts     # real-time mic → analysis windows
 │   ├── threatTracker.ts    # dedup, trajectory, alerts
-│   ├── corvusVoice.ts      # ElevenLabs TTS + haptics
+│   ├── corvusVoice.ts      # TTS via server proxy (/api/corvus/tts) + haptics
 │   ├── reportGenerator.ts  # HTML After-Action Report
 │   └── theme.ts            # OCWS palette
 ├── assets/

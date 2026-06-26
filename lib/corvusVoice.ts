@@ -2,13 +2,20 @@
  * corvusVoice.ts -- Corvus threat briefs.
  *
  * Audible TTS is DISABLED until production. This module currently delivers
- * briefs as a console log + a haptic buzz only -- no ElevenLabs synthesis and
- * no audio playback, so the app carries no `expo-av` / `expo-asset` dependency.
+ * briefs as a console log + a haptic buzz only -- no audio synthesis and no
+ * audio playback, so the app carries no `expo-av` / `expo-audio` dependency.
  *
- * The public surface (constructor, brief, setApiKey, hasVoice, dispose) is kept
- * intact so App.tsx / SettingsScreen need no changes. To restore the spoken
- * Corvus voice for production, reintroduce a TTS path here (prefer `expo-audio`
- * over the deprecated `expo-av`) and wire the `speak` option back through.
+ * SECURITY: the ElevenLabs API key is NEVER bundled in the app. Any
+ * EXPO_PUBLIC_* var is baked into the APK and is trivially extractable, so the
+ * key lives server-side in ocws-site (process.env.ELEVENLABS_API_KEY) behind
+ * the /api/corvus/tts proxy. When the spoken voice is restored, this module
+ * POSTs the brief text to that endpoint and plays back the returned audio/mpeg
+ * (prefer `expo-audio`); it must NOT call api.elevenlabs.io directly and must
+ * NOT hold a key. The endpoint URL (not a secret) is overridable via
+ * EXPO_PUBLIC_CORVUS_TTS_URL, mirroring specimenSync's library URL.
+ *
+ * The public surface (constructor, brief, setEnabled, hasVoice, dispose) is
+ * kept stable so App.tsx / SettingsScreen need minimal changes.
  */
 
 import * as Haptics from 'expo-haptics';
@@ -26,17 +33,25 @@ export interface BriefOptions {
 
 const SIGN_OFF = 'Corvus. Old Crows Wireless Solutions. We Always Find the Signal.';
 
-export class CorvusVoice {
-  // Retained only so SettingsScreen's voice toggle keeps a coherent state.
-  // No network calls are made while audible voice is disabled.
-  private apiKey: string;
+// Server-side TTS proxy that holds the ElevenLabs key (ocws-site). The mobile
+// app only ever sees this URL, never a key. Override per-environment with
+// EXPO_PUBLIC_CORVUS_TTS_URL.
+const DEFAULT_TTS_URL = 'https://www.oldcrowswireless.com/api/corvus/tts';
+const TTS_URL = process.env.EXPO_PUBLIC_CORVUS_TTS_URL || DEFAULT_TTS_URL;
 
-  constructor(apiKey = '') {
-    this.apiKey = apiKey;
+export class CorvusVoice {
+  // Whether spoken briefs are desired (driven by the Settings toggle). No key
+  // is ever stored client-side; audible playback is wired through the proxy.
+  private enabled: boolean;
+  private readonly ttsUrl: string;
+
+  constructor(opts: { enabled?: boolean; ttsUrl?: string } = {}) {
+    this.enabled = opts.enabled ?? true;
+    this.ttsUrl = opts.ttsUrl || TTS_URL;
   }
 
-  setApiKey(key: string): void {
-    this.apiKey = key;
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
   }
 
   /** Audible voice is disabled until production; always false for now. */
@@ -63,6 +78,10 @@ export class CorvusVoice {
    * Deliver a threat brief. Audible TTS is disabled pre-production, so this
    * logs the script and (optionally) buzzes the haptics. `opts.speak` is
    * accepted but ignored until the spoken voice is restored.
+   *
+   * To restore audible voice: when (this.enabled && opts.speak), POST
+   * { text: script } to this.ttsUrl, then play the returned audio/mpeg via
+   * expo-audio. The key stays server-side — no key is referenced here.
    */
   async brief(threats: BriefThreat[], opts: BriefOptions = {}): Promise<void> {
     const { vibrate = true } = opts;
