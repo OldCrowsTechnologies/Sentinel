@@ -67,7 +67,8 @@
       ],
       "react-native-ble-plx",
       "@maplibre/maplibre-react-native",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-font"
     ],
     "extra": {
       "eas": {

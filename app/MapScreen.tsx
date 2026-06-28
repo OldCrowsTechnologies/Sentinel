@@ -12,7 +12,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import {
   MapView,
   Camera,
@@ -22,7 +22,9 @@ import {
   setAccessToken,
   OfflineManager,
 } from '@maplibre/maplibre-react-native';
-import { COLORS } from '../lib/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, FONTS, RADII } from '../lib/theme';
+import { PrimaryButton } from './ui';
 import type { Threat } from '../lib/threatTracker';
 import { getRemoteIdContacts } from '../lib/remoteIdService';
 import type { GeoFix } from '../lib/locationService';
@@ -68,11 +70,9 @@ function ring(lat: number, lon: number, radiusM: number, pts = 48): number[][] {
 }
 
 export default function MapScreen({
-  onBack,
   operator,
   threats,
 }: {
-  onBack: () => void;
   operator: GeoFix | null;
   threats: Threat[];
 }) {
@@ -132,7 +132,7 @@ export default function MapScreen({
 
         {operator && (
           <PointAnnotation id="operator" coordinate={[operator.lon, operator.lat]}>
-            <View style={[s.dot, { backgroundColor: COLORS.tealLight, borderColor: '#fff' }]} />
+            <View style={[s.dot, { backgroundColor: COLORS.teal, borderColor: '#fff' }]} />
           </PointAnnotation>
         )}
 
@@ -162,35 +162,49 @@ export default function MapScreen({
       </MapView>
 
       <View style={s.legend}>
+        <View style={s.titleRow}>
+          <MaterialCommunityIcons name="map-marker-radius" size={15} color={COLORS.teal} style={{ marginRight: 6 }} />
+          <Text style={s.title}>TACTICAL MAP</Text>
+        </View>
         <Text style={s.legendText}>
-          ● operator   ◐ acoustic range ring   ● RID drone   ■ RID pilot
+          ● OPERATOR   ◐ ACOUSTIC RANGE RING   ● RID DRONE   ■ RID PILOT
         </Text>
-        {!operator && <Text style={s.warn}>No GPS fix — acoustic rings need your position.</Text>}
+        {!operator && <Text style={s.warn}>NO GPS FIX — ACOUSTIC RINGS NEED YOUR POSITION.</Text>}
         {aoStatus ? <Text style={s.ao}>{aoStatus}</Text> : null}
       </View>
 
       <View style={s.controls}>
-        <TouchableOpacity style={[s.btn, { borderColor: COLORS.tealDark }]} onPress={onBack}>
-          <Text style={s.btnText}>‹ BACK</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.btn, { borderColor: COLORS.tealLight }]} onPress={downloadAO}>
-          <Text style={[s.btnText, { color: COLORS.tealLight }]}>DOWNLOAD AO (OFFLINE)</Text>
-        </TouchableOpacity>
+        <PrimaryButton
+          label="DOWNLOAD AO · OFFLINE"
+          icon="cloud-download"
+          colors={['#13B6BB', '#0D7E86']}
+          onPress={downloadAO}
+        />
       </View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.darkNavy },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   map: { flex: 1 },
   dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
   square: { width: 14, height: 14, borderWidth: 2 },
-  legend: { position: 'absolute', top: 48, left: 12, right: 12, backgroundColor: '#0A1422CC', borderRadius: 8, padding: 8 },
-  legendText: { color: COLORS.lightGray, fontSize: 11 },
-  warn: { color: COLORS.warning, fontSize: 11, marginTop: 4 },
-  ao: { color: COLORS.tealLight, fontSize: 11, marginTop: 4 },
-  controls: { flexDirection: 'row', gap: 10, padding: 12, backgroundColor: COLORS.darkNavy },
-  btn: { flex: 1, paddingVertical: 13, borderRadius: 6, alignItems: 'center', borderWidth: 1 },
-  btnText: { color: COLORS.muted, fontWeight: '800', letterSpacing: 1, fontSize: 12 },
+  legend: {
+    position: 'absolute',
+    top: 50,
+    left: 12,
+    right: 12,
+    backgroundColor: 'rgba(8,13,22,0.82)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.panelBorder,
+    borderRadius: RADII.md,
+    padding: 10,
+  },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  title: { fontFamily: FONTS.displayBold, color: COLORS.ink, fontSize: 13, letterSpacing: 1.5 },
+  legendText: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 11, letterSpacing: 0.5 },
+  warn: { fontFamily: FONTS.body, color: COLORS.warning, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
+  ao: { fontFamily: FONTS.body, color: COLORS.teal, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
+  controls: { position: 'absolute', bottom: 14, left: 12, right: 12, flexDirection: 'row' },
 });

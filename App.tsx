@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Alert, Share, StatusBar, View } from 'react-native';
+import { useFonts } from 'expo-font';
+import { Rajdhani_500Medium, Rajdhani_600SemiBold, Rajdhani_700Bold } from '@expo-google-fonts/rajdhani';
+import { JetBrainsMono_400Regular, JetBrainsMono_500Medium, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 
 import LaunchScreen from './app/LaunchScreen';
 import SentinelScreen from './app/SentinelScreen';
@@ -10,6 +13,9 @@ import RemoteIdScreen from './app/RemoteIdScreen';
 import MapScreen from './app/MapScreen';
 import TrainingCaptureScreen from './app/TrainingCaptureScreen';
 import AnalysisScreen from './app/AnalysisScreen';
+import LibraryScreen from './app/LibraryScreen';
+import { ScreenBG, TabBar, TabKey } from './app/ui';
+import { COLORS } from './lib/theme';
 
 import AudioCaptureService from './lib/audioCapture';
 import DroneClassifier, { CorvusModel } from './lib/mlClassifier';
@@ -23,7 +29,7 @@ import { syncPending } from './lib/specimenSync';
 import { logDetection } from './lib/missionLog';
 import corvusModelJson from './assets/models/corvus-model.json';
 
-type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map' | 'training' | 'analysis';
+type SubScreen = 'detections' | 'analysis' | 'training' | null;
 
 // NOTE: the ElevenLabs key is NEVER bundled here. Any EXPO_PUBLIC_* var is baked
 // into the APK and is trivially extractable, so voice synthesis is proxied
@@ -31,13 +37,23 @@ type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map' | 
 const SILENCE_RMS = 0.004; // below this, treat window as silence (force "None")
 
 export default function App() {
-  const [showLaunch, setShowLaunch] = useState(true); // branded first-open hero
-  const [screen, setScreen] = useState<ScreenName>('sentinel');
+  const [fontsLoaded] = useFonts({
+    Rajdhani_500Medium,
+    Rajdhani_600SemiBold,
+    Rajdhani_700Bold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+    JetBrainsMono_700Bold,
+  });
+
+  const [showLaunch, setShowLaunch] = useState(true);
+  const [tab, setTab] = useState<TabKey>('monitor');
+  const [sub, setSub] = useState<SubScreen>(null);
   const [isMonitoring, setMonitoring] = useState(false);
   const [modelReady, setModelReady] = useState(false);
   const [statusText, setStatus] = useState('Initializing…');
   const [level, setLevel] = useState(0);
-  const [peakLevel, setPeakLevel] = useState(0); // peak-hold for the rotate-to-peak locate aid
+  const [peakLevel, setPeakLevel] = useState(0);
   const [threats, setThreats] = useState<Threat[]>([]);
   const [selectedThreat, setSelectedThreat] = useState<Threat | null>(null);
   const [lastAlert, setLastAlert] = useState<AlertEvent | null>(null);
@@ -59,9 +75,6 @@ export default function App() {
 
   const [specimenCount, setSpecimenCount] = useState(0);
 
-  // Capture an unknown/homemade contact's audio window + verdict into the local
-  // specimen library (the learning flywheel). Auto on new unknown builds; also
-  // available manually from the Contact Detail card.
   const captureSpecimen = useCallback((t: Threat) => {
     const win = latestWindowRef.current;
     if (!win) return;
@@ -117,11 +130,11 @@ export default function App() {
     const tracker = trackerRef.current;
     if (!clf || !tracker) return;
 
-    latestWindowRef.current = win; // keep the latest window for specimen capture
+    latestWindowRef.current = win;
 
     const lvl = Math.min(1, rms * 12);
     setLevel(lvl);
-    setPeakLevel((p) => Math.max(p, lvl)); // hold the loudest reading for rotate-to-peak
+    setPeakLevel((p) => Math.max(p, lvl));
 
     const result = clf.classifySamples(win);
     const label = rms < SILENCE_RMS ? 'None' : result.label;
@@ -145,7 +158,6 @@ export default function App() {
 
     setThreats(tracker.getActiveThreats());
 
-    // Log to SQLite for post-mission analysis: any drone hit or voice activity.
     const droneHit = label !== 'None' && result.droneDetected;
     if (droneHit || result.voicePresent) {
       logDetection({
@@ -160,7 +172,6 @@ export default function App() {
       });
     }
 
-    // Notify on every NEW intercept so a minimized/backgrounded operator is alerted.
     for (const a of alerts) {
       if (a.type === 'new_threat') {
         const d = a.threat.distance;
@@ -168,7 +179,6 @@ export default function App() {
           `New contact: ${a.threat.type}`,
           `~${Math.round(d * 0.65)}–${Math.round(d * 1.55)} ft • ${Math.round(a.threat.confidence)}% confidence`
         );
-        // Auto-capture unknown/homemade builds into the specimen library.
         if (a.threat.isUnknownBuild) captureSpecimen(a.threat);
       }
     }
@@ -184,7 +194,7 @@ export default function App() {
         );
       }
     }
-  }, []);
+  }, [captureSpecimen]);
 
   const toggle = async () => {
     const audio = audioRef.current;
@@ -200,13 +210,11 @@ export default function App() {
         trackerRef.current?.setThresholds({ minConfidence: settings.alertConfidence });
         sessionStartRef.current = Date.now();
         setPeakLevel(0);
-        // Permissions + GPS for intercept alerts and stamping (best-effort).
         await initNotifications();
         await initLocation();
         await startLocation();
         const fix = getLastFix();
         sessionOriginRef.current = fix ? { lat: fix.lat, lon: fix.lon, accuracy: fix.accuracy } : null;
-        // Flush any queued specimens to the shared library if a network is up.
         syncPending().then(() => pendingCount()).then(setSpecimenCount).catch(() => {});
         await audio.startMonitoring(onWindow);
         setMonitoring(true);
@@ -237,64 +245,94 @@ export default function App() {
   const patchSettings = (patch: Partial<SettingsState>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
-      if (patch.alertConfidence != null) {
-        trackerRef.current?.setThresholds({ minConfidence: patch.alertConfidence });
-      }
-      if (patch.voiceEnabled != null && voiceRef.current) {
-        voiceRef.current.setEnabled(patch.voiceEnabled);
-      }
+      if (patch.alertConfidence != null) trackerRef.current?.setThresholds({ minConfidence: patch.alertConfidence });
+      if (patch.voiceEnabled != null && voiceRef.current) voiceRef.current.setEnabled(patch.voiceEnabled);
       return next;
     });
   };
 
+  const stopForExclusiveMic = () => {
+    if (isMonitoring) {
+      audioRef.current?.stopMonitoring();
+      stopLocation();
+      setMonitoring(false);
+      setLevel(0);
+    }
+  };
+
+  const openSub = (s: SubScreen) => {
+    if (s === 'training') stopForExclusiveMic();
+    setSub(s);
+  };
+
+  const changeTab = (t: TabKey) => {
+    setSub(null);
+    setTab(t);
+  };
+
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.bg }} />;
+  }
+
+  const renderMain = () => {
+    if (tab === 'monitor')
+      return (
+        <ScreenBG>
+          <SentinelScreen
+            isMonitoring={isMonitoring}
+            modelReady={modelReady}
+            statusText={statusText}
+            level={level}
+            peakLevel={peakLevel}
+            onResetPeak={() => setPeakLevel(0)}
+            specimenCount={specimenCount}
+            threats={threats}
+            lastAlert={lastAlert}
+            onToggle={toggle}
+            onReport={onReport}
+            onSelectThreat={setSelectedThreat}
+          />
+        </ScreenBG>
+      );
+    if (tab === 'map') return <MapScreen operator={getLastFix()} threats={threats} />;
+    if (tab === 'rf')
+      return (
+        <ScreenBG>
+          <RemoteIdScreen />
+        </ScreenBG>
+      );
+    if (tab === 'settings')
+      return (
+        <ScreenBG>
+          <SettingsScreen settings={settings} onChange={patchSettings} />
+        </ScreenBG>
+      );
+    // library tab (hub + sub-screens)
+    return (
+      <ScreenBG>
+        {sub === 'detections' ? (
+          <DetectionsScreen log={trackerRef.current?.getSessionLog() ?? []} onBack={() => setSub(null)} />
+        ) : sub === 'analysis' ? (
+          <AnalysisScreen onBack={() => setSub(null)} />
+        ) : sub === 'training' ? (
+          <TrainingCaptureScreen onBack={() => setSub(null)} />
+        ) : (
+          <LibraryScreen specimenCount={specimenCount} sessionCount={trackerRef.current?.getSessionLog().length ?? 0} onOpen={openSub} />
+        )}
+      </ScreenBG>
+    );
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#1A2332' }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <StatusBar barStyle="light-content" />
-      {showLaunch && <LaunchScreen onEnter={() => setShowLaunch(false)} />}
-      {screen === 'sentinel' && (
-        <SentinelScreen
-          isMonitoring={isMonitoring}
-          modelReady={modelReady}
-          statusText={statusText}
-          level={level}
-          peakLevel={peakLevel}
-          onResetPeak={() => setPeakLevel(0)}
-          specimenCount={specimenCount}
-          threats={threats}
-          lastAlert={lastAlert}
-          onToggle={toggle}
-          onReport={onReport}
-          onSelectThreat={(t) => setSelectedThreat(t)}
-          onNavigate={(sc) => {
-            // Training capture needs the mic exclusively — stop live monitoring.
-            if (sc === 'training' && isMonitoring) {
-              audioRef.current?.stopMonitoring();
-              setMonitoring(false);
-              setLevel(0);
-            }
-            setScreen(sc);
-          }}
-        />
-      )}
+      <View style={{ flex: 1 }}>{renderMain()}</View>
+      {!showLaunch && <TabBar active={tab} onChange={changeTab} />}
+
       {selectedThreat && (
-        <ContactDetailScreen
-          threat={selectedThreat}
-          onClose={() => setSelectedThreat(null)}
-          onRecord={captureSpecimen}
-        />
+        <ContactDetailScreen threat={selectedThreat} onClose={() => setSelectedThreat(null)} onRecord={captureSpecimen} />
       )}
-      {screen === 'settings' && (
-        <SettingsScreen settings={settings} onChange={patchSettings} onBack={() => setScreen('sentinel')} />
-      )}
-      {screen === 'detections' && (
-        <DetectionsScreen log={trackerRef.current?.getSessionLog() ?? []} onBack={() => setScreen('sentinel')} />
-      )}
-      {screen === 'remoteid' && <RemoteIdScreen onBack={() => setScreen('sentinel')} />}
-      {screen === 'map' && (
-        <MapScreen onBack={() => setScreen('sentinel')} operator={getLastFix()} threats={threats} />
-      )}
-      {screen === 'training' && <TrainingCaptureScreen onBack={() => setScreen('sentinel')} />}
-      {screen === 'analysis' && <AnalysisScreen onBack={() => setScreen('sentinel')} />}
+      {showLaunch && <LaunchScreen onEnter={() => setShowLaunch(false)} />}
     </View>
   );
 }

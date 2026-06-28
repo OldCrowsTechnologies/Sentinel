@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Switch, StyleSheet, ScrollView } from 'react-native';
-import { COLORS } from '../lib/theme';
+import { View, Text, Switch, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, FONTS, RADII } from '../lib/theme';
+import { AppHeader, Panel, SectionLabel } from './ui';
 import { getRfModuleStatus } from '../lib/rfSensorService';
 
 export interface SettingsState {
@@ -12,81 +14,125 @@ export interface SettingsState {
 export interface SettingsProps {
   settings: SettingsState;
   onChange: (patch: Partial<SettingsState>) => void;
-  onBack: () => void;
 }
 
-export default function SettingsScreen({ settings, onChange, onBack }: SettingsProps) {
+function SwitchRow({
+  label,
+  value,
+  onValueChange,
+  disabled,
+}: {
+  label: string;
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={[s.row, disabled ? { opacity: 0.5 } : null]}>
+      <Text style={s.label}>{label}</Text>
+      <Switch
+        value={value}
+        disabled={disabled}
+        onValueChange={onValueChange}
+        trackColor={{ false: '#1b2c44', true: COLORS.tealDark }}
+        thumbColor={COLORS.teal}
+        ios_backgroundColor="#1b2c44"
+      />
+    </View>
+  );
+}
+
+function Stepper({ icon, onPress }: { icon: 'minus' | 'plus'; onPress: () => void }) {
+  return (
+    <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={s.step}>
+      <MaterialCommunityIcons name={icon} size={16} color={COLORS.teal} />
+      <Text style={s.stepText}>5%</Text>
+    </TouchableOpacity>
+  );
+}
+
+export default function SettingsScreen({ settings, onChange }: SettingsProps) {
   const rf = getRfModuleStatus();
   return (
-    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 40 }}>
-      <Text style={s.title}>SETTINGS</Text>
+    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+      <AppHeader title="SETTINGS" />
 
-      <View style={s.row}>
-        <Text style={s.label}>Corvus voice briefs</Text>
-        <Switch value={settings.voiceEnabled} onValueChange={(v) => onChange({ voiceEnabled: v })} />
-      </View>
-      <Text style={s.hint}>
-        Spoken briefs are synthesized securely via Old Crows Wireless — no API key
-        is stored on this device. Audible voice activates in production; until then
-        briefs deliver as on-screen alerts + haptics.
-      </Text>
+      <SectionLabel>ALERTS</SectionLabel>
+      <Panel style={s.panel}>
+        <SwitchRow
+          label="CORVUS VOICE BRIEFS"
+          value={settings.voiceEnabled}
+          onValueChange={(v) => onChange({ voiceEnabled: v })}
+        />
+        <Text style={s.hint}>
+          Briefs synthesized securely via Old Crows Wireless — no API key on this device. Audible voice
+          activates in production; until then briefs deliver as on-screen alerts + haptics.
+        </Text>
 
-      <View style={s.row}>
-        <Text style={s.label}>Haptic alerts</Text>
-        <Switch value={settings.hapticsEnabled} onValueChange={(v) => onChange({ hapticsEnabled: v })} />
-      </View>
+        <View style={s.divider} />
 
-      <View style={[s.row, { marginTop: 18 }]}>
-        <Text style={s.label}>Alert confidence</Text>
-        <Text style={s.value}>{settings.alertConfidence}%</Text>
-      </View>
-      <View style={s.stepRow}>
-        <TouchableOpacity style={s.step} onPress={() => onChange({ alertConfidence: Math.max(50, settings.alertConfidence - 5) })}>
-          <Text style={s.stepText}>– 5%</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.step} onPress={() => onChange({ alertConfidence: Math.min(99, settings.alertConfidence + 5) })}>
-          <Text style={s.stepText}>+ 5%</Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={s.hint}>Minimum classifier confidence to raise a new-threat alert.</Text>
+        <SwitchRow
+          label="HAPTIC ALERTS"
+          value={settings.hapticsEnabled}
+          onValueChange={(v) => onChange({ hapticsEnabled: v })}
+        />
 
-      <View style={[s.row, { marginTop: 18 }]}>
-        <Text style={s.label}>External RF sensor (SDR)</Text>
-        <Switch value={false} disabled={!rf.present} onValueChange={() => {}} />
-      </View>
-      <Text style={s.hint}>
-        LoRa / ExpressLRS / control-link detection via an external Corvus RF module.
-        {' '}
-        {rf.note} Antenna inert until a module is connected.
-      </Text>
+        <View style={s.divider} />
 
-      <View style={s.info}>
-        <Text style={s.infoTitle}>MODEL</Text>
-        <Text style={s.infoText}>Acoustic MLP, 5-class (None / Skydio X2 / DJI Phantom / Parrot Anafi / Unknown).</Text>
-        <Text style={s.infoText}>16 kHz mono · log-mel + band-ratio features · on-device inference.</Text>
-        <Text style={s.infoText}>Retrain via training/train_corvus.py with your own recordings.</Text>
-      </View>
+        <View style={s.row}>
+          <Text style={s.label}>ALERT CONFIDENCE</Text>
+          <View style={s.confRight}>
+            <Stepper icon="minus" onPress={() => onChange({ alertConfidence: Math.max(50, settings.alertConfidence - 5) })} />
+            <Text style={s.value}>{settings.alertConfidence}%</Text>
+            <Stepper icon="plus" onPress={() => onChange({ alertConfidence: Math.min(99, settings.alertConfidence + 5) })} />
+          </View>
+        </View>
+        <Text style={s.hint}>Minimum classifier confidence to raise a new-threat alert.</Text>
+      </Panel>
 
-      <TouchableOpacity style={s.back} onPress={onBack}>
-        <Text style={s.backText}>BACK</Text>
-      </TouchableOpacity>
+      <SectionLabel>SENSORS</SectionLabel>
+      <Panel style={s.panel}>
+        <SwitchRow
+          label="EXTERNAL RF SENSOR (SDR)"
+          value={false}
+          disabled={!rf.present}
+          onValueChange={() => {}}
+        />
+        <Text style={s.hint}>
+          LoRa / ExpressLRS / control-link detection via an external Corvus RF module. {rf.note} Antenna inert
+          until a module is connected.
+        </Text>
+      </Panel>
+
+      <SectionLabel>MODEL</SectionLabel>
+      <Panel style={s.panel}>
+        <Text style={s.modelText}>Acoustic MLP, 5-class (None / Skydio X2 / DJI Phantom / Parrot Anafi / Unknown).</Text>
+        <Text style={s.modelText}>16 kHz mono · log-mel + band-ratio features · on-device inference.</Text>
+        <Text style={s.modelText}>Retrain via training/train_corvus.py with your own recordings.</Text>
+      </Panel>
     </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.darkNavy, padding: 16, paddingTop: 56 },
-  title: { fontSize: 20, fontWeight: '700', color: COLORS.lightGray, letterSpacing: 1, borderBottomColor: COLORS.gold, borderBottomWidth: 2, paddingBottom: 10, marginBottom: 16 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  label: { color: COLORS.lightGray, fontSize: 15 },
-  value: { color: COLORS.tealLight, fontSize: 16, fontWeight: '700' },
-  hint: { color: COLORS.muted, fontSize: 12, marginBottom: 8 },
-  stepRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  step: { flex: 1, borderWidth: 1, borderColor: COLORS.tealDark, borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
-  stepText: { color: COLORS.tealLight, fontWeight: '700' },
-  info: { backgroundColor: COLORS.panel, borderRadius: 8, padding: 14, marginTop: 24 },
-  infoTitle: { color: COLORS.gold, fontWeight: '700', fontSize: 12, marginBottom: 8 },
-  infoText: { color: COLORS.muted, fontSize: 12, marginBottom: 4 },
-  back: { marginTop: 28, backgroundColor: COLORS.tealLight, borderRadius: 6, paddingVertical: 14, alignItems: 'center' },
-  backText: { fontWeight: '800', color: COLORS.darkNavy, letterSpacing: 1 },
+  container: { flex: 1 },
+  panel: { paddingHorizontal: 14, paddingVertical: 4 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
+  label: { fontFamily: FONTS.body, color: COLORS.ink, fontSize: 13, letterSpacing: 0.5, flexShrink: 1, paddingRight: 12 },
+  value: { fontFamily: FONTS.mono, color: COLORS.teal, fontSize: 15, minWidth: 44, textAlign: 'center' },
+  hint: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 11.5, lineHeight: 16, paddingBottom: 12 },
+  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.divider },
+  confRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  step: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    borderWidth: 1,
+    borderColor: COLORS.teal + '66',
+    borderRadius: RADII.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  stepText: { fontFamily: FONTS.displayBold, color: COLORS.teal, fontSize: 11, letterSpacing: 0.5 },
+  modelText: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 12, lineHeight: 17, paddingVertical: 4 },
 });

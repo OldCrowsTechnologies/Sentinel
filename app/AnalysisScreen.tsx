@@ -8,10 +8,11 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { COLORS } from '../lib/theme';
+import { COLORS, FONTS, RADII } from '../lib/theme';
+import { AppHeader, MetricChip, Pill, PrimaryButton, IconButton, EmptyState } from './ui';
 import { getRecentDetections, MissionLogRow } from '../lib/missionLog';
 
 const DB_PATH = FileSystem.documentDirectory + 'SQLite/corvus-mission.db';
@@ -52,29 +53,22 @@ export default function AnalysisScreen({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <View style={s.container}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={onBack}>
-          <Text style={s.back}>‹ BACK</Text>
-        </TouchableOpacity>
-        <Text style={s.title}>ANALYSIS</Text>
-        <TouchableOpacity onPress={load}>
-          <Text style={s.back}>REFRESH</Text>
-        </TouchableOpacity>
+    <View style={{ flex: 1 }}>
+      <AppHeader title="ANALYSIS" onBack={onBack} right={<IconButton icon="refresh" onPress={load} />} />
+
+      <View style={s.metrics}>
+        <MetricChip value={String(rows.length)} label="LOGGED" />
+        <MetricChip value={String(droneHits)} label="DRONE" color={COLORS.teal} />
+        <MetricChip value={String(voiceEvents)} label="VOICE" color={COLORS.gold} />
+        <MetricChip value={String(voiceAndDrone)} label="BOTH" color={COLORS.warning} />
       </View>
 
-      <View style={s.summary}>
-        <Stat label="LOGGED" value={rows.length} />
-        <Stat label="DRONE" value={droneHits} color={COLORS.tealLight} />
-        <Stat label="VOICE" value={voiceEvents} color={COLORS.gold} />
-        <Stat label="BOTH" value={voiceAndDrone} color={COLORS.warning} />
-      </View>
       <Text style={s.hint}>
         "VOICE" = windows the VAD flagged as speech. "BOTH" = a drone call during speech (where the
         confidence gating kicks in). Record voices/crowd with no drone up — DRONE should stay ~0.
       </Text>
 
-      <ScrollView style={s.list}>
+      <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 12 }}>
         {rows.map((r, i) => (
           <View key={i} style={s.row}>
             <View style={{ flex: 1 }}>
@@ -86,57 +80,48 @@ export default function AnalysisScreen({ onBack }: { onBack: () => void }) {
                 {new Date(r.ts).toLocaleTimeString()} · peak {(r.filteredAudioPeak ?? 0).toFixed(3)}
               </Text>
             </View>
-            {r.droneDetected ? <Tag text="DRONE" color={COLORS.tealLight} /> : null}
-            {r.voicePresent ? <Tag text="VOICE" color={COLORS.gold} /> : null}
+            <View style={s.tags}>
+              {r.droneDetected ? <Pill label="DRONE" color={COLORS.teal} /> : null}
+              {r.voicePresent ? <Pill label="VOICE" color={COLORS.gold} /> : null}
+            </View>
           </View>
         ))}
-        {rows.length === 0 && <Text style={s.empty}>No log entries yet. Run monitoring, then refresh.</Text>}
+        {rows.length === 0 && (
+          <EmptyState icon="database-search" text="No log entries yet. Run monitoring, then refresh." />
+        )}
       </ScrollView>
 
-      <TouchableOpacity style={s.btn} onPress={exportDb}>
-        <Text style={s.btnText}>EXPORT LOG (.db)</Text>
-      </TouchableOpacity>
+      <View style={s.footer}>
+        <PrimaryButton
+          label="EXPORT LOG (.db)"
+          icon="database-export"
+          colors={['#13B6BB', '#0D7E86']}
+          onPress={exportDb}
+        />
+      </View>
       {status ? <Text style={s.status}>{status}</Text> : null}
     </View>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <View style={s.stat}>
-      <Text style={[s.statValue, color && { color }]}>{value}</Text>
-      <Text style={s.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function Tag({ text, color }: { text: string; color: string }) {
-  return (
-    <View style={[s.tag, { borderColor: color }]}>
-      <Text style={[s.tagText, { color }]}>{text}</Text>
-    </View>
-  );
-}
-
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.darkNavy, padding: 16, paddingTop: 56 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomColor: COLORS.gold, borderBottomWidth: 2, paddingBottom: 10 },
-  back: { color: COLORS.tealLight, fontWeight: '700', fontSize: 12 },
-  title: { fontSize: 18, fontWeight: '700', color: COLORS.lightGray, letterSpacing: 1 },
-  summary: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14, backgroundColor: COLORS.panel, borderRadius: 8, padding: 14 },
-  stat: { alignItems: 'center', flex: 1 },
-  statValue: { color: COLORS.lightGray, fontSize: 26, fontWeight: '800' },
-  statLabel: { color: COLORS.muted, fontSize: 10, letterSpacing: 1, marginTop: 2 },
-  hint: { color: COLORS.muted, fontSize: 11, lineHeight: 16, marginTop: 10 },
+  metrics: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  hint: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 11, lineHeight: 16, marginTop: 10 },
   list: { flex: 1, marginTop: 12 },
-  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.panel, borderRadius: 6, padding: 10, marginBottom: 6 },
-  rowLabel: { color: COLORS.lightGray, fontWeight: '700', fontSize: 13 },
-  rowConf: { color: COLORS.gold, fontWeight: '700' },
-  rowMeta: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
-  tag: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2, marginLeft: 6 },
-  tagText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  empty: { color: COLORS.muted, textAlign: 'center', paddingVertical: 24 },
-  btn: { backgroundColor: COLORS.tealLight, borderRadius: 6, paddingVertical: 14, alignItems: 'center', marginTop: 10 },
-  btnText: { color: COLORS.darkNavy, fontWeight: '800', letterSpacing: 1 },
-  status: { color: COLORS.tealLight, fontSize: 12, marginTop: 8, textAlign: 'center' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.panel,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.panelBorder,
+    borderRadius: RADII.md,
+    padding: 10,
+    marginBottom: 6,
+  },
+  rowLabel: { fontFamily: FONTS.displayBold, color: COLORS.ink, fontSize: 13, letterSpacing: 0.3 },
+  rowConf: { fontFamily: FONTS.mono, color: COLORS.gold, fontSize: 12 },
+  rowMeta: { fontFamily: FONTS.monoR, color: COLORS.muted, fontSize: 11, marginTop: 2 },
+  tags: { flexDirection: 'row', gap: 6, marginLeft: 6 },
+  footer: { flexDirection: 'row', marginTop: 10 },
+  status: { fontFamily: FONTS.monoR, color: COLORS.teal, fontSize: 12, marginTop: 8, textAlign: 'center' },
 });

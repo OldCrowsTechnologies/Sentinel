@@ -9,7 +9,9 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { COLORS } from '../lib/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, FONTS, RADII } from '../lib/theme';
+import { AppHeader, SectionLabel, PrimaryButton, EmptyState } from './ui';
 import TrainingCapture from '../lib/trainingCapture';
 import { saveClip, listClips, deleteClip, exportClip, TrainingClipMeta } from '../lib/trainingStore';
 
@@ -69,32 +71,30 @@ export default function TrainingCaptureScreen({ onBack }: { onBack: () => void }
   };
 
   return (
-    <View style={s.container}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={onBack} disabled={recording}>
-          <Text style={[s.back, recording && { opacity: 0.4 }]}>‹ BACK</Text>
-        </TouchableOpacity>
-        <Text style={s.title}>TRAINING CAPTURE</Text>
-        <View style={{ width: 50 }} />
-      </View>
+    <View style={{ flex: 1 }}>
+      <AppHeader title="TRAINING CAPTURE" onBack={onBack} />
 
       <Text style={s.hint}>
         Record real audio to retrain the model. A few minutes per drone, vary distance + throttle.
         Negatives matter: capture the actual environment quiet + voices/crowd as "None".
       </Text>
 
-      <Text style={s.sectionLabel}>CLASS</Text>
+      <SectionLabel>CLASS</SectionLabel>
       <View style={s.chips}>
-        {PRESET_LABELS.map((l) => (
-          <TouchableOpacity
-            key={l}
-            disabled={recording}
-            onPress={() => { setLabel(l); setCustom(''); }}
-            style={[s.chip, activeLabel === l && !custom.trim() && s.chipOn]}
-          >
-            <Text style={[s.chipText, activeLabel === l && !custom.trim() && s.chipTextOn]}>{l}</Text>
-          </TouchableOpacity>
-        ))}
+        {PRESET_LABELS.map((l) => {
+          const on = activeLabel === l && !custom.trim();
+          return (
+            <TouchableOpacity
+              key={l}
+              disabled={recording}
+              onPress={() => { setLabel(l); setCustom(''); }}
+              style={[s.chip, on && s.chipOn]}
+              activeOpacity={0.8}
+            >
+              <Text style={[s.chipText, on && s.chipTextOn]}>{l.toUpperCase()}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
       <TextInput
         style={s.input}
@@ -105,59 +105,72 @@ export default function TrainingCaptureScreen({ onBack }: { onBack: () => void }
         onChangeText={setCustom}
       />
 
-      <TouchableOpacity
-        style={[s.record, { backgroundColor: recording ? COLORS.danger : COLORS.tealLight }]}
-        onPress={toggle}
-      >
-        <Text style={s.recordText}>
-          {recording ? `STOP  ·  ${dur.toFixed(1)}s` : `RECORD  ·  ${activeLabel}`}
-        </Text>
-      </TouchableOpacity>
+      <View style={s.recordRow}>
+        <PrimaryButton
+          label={recording ? `STOP · ${dur.toFixed(1)}s` : `RECORD · ${activeLabel.toUpperCase()}`}
+          icon={recording ? 'stop' : 'microphone'}
+          colors={recording ? ['#FF5A5F', '#E0353B'] : ['#13B6BB', '#0D7E86']}
+          glow={recording ? '#FF5A5F' : COLORS.teal}
+          onPress={toggle}
+        />
+      </View>
       <Text style={s.status}>{status}</Text>
 
-      <Text style={s.sectionLabel}>CAPTURED CLIPS ({clips.length})</Text>
-      <ScrollView style={s.list}>
+      <SectionLabel>{`CAPTURED CLIPS (${clips.length})`}</SectionLabel>
+      <ScrollView style={s.list} contentContainerStyle={clips.length === 0 && { flexGrow: 1 }}>
         {clips.map((c) => (
           <View key={c.id} style={s.item}>
             <View style={{ flex: 1 }}>
-              <Text style={s.itemLabel}>{c.label}</Text>
+              <Text style={s.itemLabel}>{c.label.toUpperCase()}</Text>
               <Text style={s.itemMeta}>{c.durationSec.toFixed(1)}s · {new Date(c.timestamp).toLocaleTimeString()}</Text>
             </View>
-            <TouchableOpacity style={s.itemBtn} onPress={() => exportClip(c.id)}>
+            <TouchableOpacity style={s.itemBtn} onPress={() => exportClip(c.id)} activeOpacity={0.7}>
               <Text style={s.itemBtnText}>SHARE</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.itemBtn} onPress={() => deleteClip(c.id).then(refresh)}>
+            <TouchableOpacity style={s.itemBtn} onPress={() => deleteClip(c.id).then(refresh)} activeOpacity={0.7}>
               <Text style={[s.itemBtnText, { color: COLORS.danger }]}>DEL</Text>
             </TouchableOpacity>
           </View>
         ))}
-        {clips.length === 0 && <Text style={s.empty}>No clips yet.</Text>}
+        {clips.length === 0 && <EmptyState icon="microphone-off" text="No clips captured yet." />}
       </ScrollView>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.darkNavy, padding: 16, paddingTop: 56 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomColor: COLORS.gold, borderBottomWidth: 2, paddingBottom: 10 },
-  back: { color: COLORS.tealLight, fontWeight: '700', fontSize: 13 },
-  title: { fontSize: 18, fontWeight: '700', color: COLORS.lightGray, letterSpacing: 1 },
-  hint: { color: COLORS.muted, fontSize: 11, lineHeight: 16, marginTop: 12 },
-  sectionLabel: { color: COLORS.gold, fontWeight: '700', fontSize: 12, letterSpacing: 1, marginTop: 18, marginBottom: 8 },
+  hint: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 12, lineHeight: 17, marginTop: 12 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderColor: COLORS.tealDark, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7 },
-  chipOn: { backgroundColor: COLORS.tealLight, borderColor: COLORS.tealLight },
-  chipText: { color: COLORS.tealLight, fontSize: 12, fontWeight: '700' },
-  chipTextOn: { color: COLORS.darkNavy },
-  input: { borderWidth: 1, borderColor: COLORS.tealDark, borderRadius: 8, color: COLORS.lightGray, padding: 10, marginTop: 10, fontSize: 13 },
-  record: { borderRadius: 8, paddingVertical: 18, alignItems: 'center', marginTop: 18 },
-  recordText: { color: COLORS.darkNavy, fontWeight: '800', letterSpacing: 1, fontSize: 15 },
-  status: { color: COLORS.tealLight, fontSize: 12, marginTop: 10 },
-  list: { flex: 1, marginTop: 8 },
-  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.panel, borderRadius: 6, padding: 12, marginBottom: 8 },
-  itemLabel: { color: COLORS.lightGray, fontWeight: '700', fontSize: 14 },
-  itemMeta: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
+  chip: { borderWidth: 1, borderColor: COLORS.tealDark, borderRadius: RADII.pill, paddingHorizontal: 13, paddingVertical: 7 },
+  chipOn: { backgroundColor: COLORS.teal, borderColor: COLORS.teal },
+  chipText: { fontFamily: FONTS.display, color: COLORS.teal, fontSize: 12, letterSpacing: 0.8 },
+  chipTextOn: { color: COLORS.bg },
+  input: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.panelBorder,
+    borderRadius: RADII.sm,
+    color: COLORS.ink,
+    fontFamily: FONTS.body,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+    fontSize: 13,
+  },
+  recordRow: { flexDirection: 'row', marginTop: 18 },
+  status: { fontFamily: FONTS.body, color: COLORS.teal, fontSize: 12, marginTop: 10 },
+  list: { flex: 1, marginTop: 4 },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.panel,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.panelBorder,
+    borderRadius: RADII.md,
+    padding: 12,
+    marginBottom: 8,
+  },
+  itemLabel: { fontFamily: FONTS.displayBold, color: COLORS.ink, fontSize: 14, letterSpacing: 0.5 },
+  itemMeta: { fontFamily: FONTS.monoR, color: COLORS.muted, fontSize: 11, marginTop: 3 },
   itemBtn: { paddingHorizontal: 10, paddingVertical: 6 },
-  itemBtnText: { color: COLORS.tealLight, fontWeight: '700', fontSize: 12 },
-  empty: { color: COLORS.muted, textAlign: 'center', paddingVertical: 20 },
+  itemBtnText: { fontFamily: FONTS.displayBold, color: COLORS.teal, fontSize: 12, letterSpacing: 0.8 },
 });

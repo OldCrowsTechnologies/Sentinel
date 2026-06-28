@@ -1,186 +1,164 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { COLORS } from '../lib/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, FONTS, RADII, sevColor, rangeBand } from '../lib/theme';
+import { AppHeader, Pill, MetricChip, PrimaryButton, IconButton, EmptyState } from './ui';
+import RadarScope, { ScopeContact } from './RadarScope';
 import type { Threat, AlertEvent } from '../lib/threatTracker';
 
 export interface SentinelProps {
   isMonitoring: boolean;
   modelReady: boolean;
   statusText: string;
-  level: number; // 0..1 input level meter
-  peakLevel: number; // 0..1 peak-hold for the rotate-to-peak locate aid
+  level: number;
+  peakLevel: number;
   onResetPeak: () => void;
-  specimenCount: number; // unknown-build captures in the local library
+  specimenCount: number;
   threats: Threat[];
   lastAlert: AlertEvent | null;
   onToggle: () => void;
   onReport: () => void;
   onSelectThreat: (threat: Threat) => void;
-  onNavigate: (screen: 'settings' | 'detections' | 'remoteid' | 'map' | 'training' | 'analysis') => void;
 }
-
-const sevColor = (d: number) => (d < 150 ? COLORS.danger : d < 300 ? COLORS.warning : COLORS.tealLight);
-
-// Range is a loudness estimate, so show a wide band (matches mlClassifier's
-// distanceMin/Max factors) rather than a single false-precision number.
-const rangeBand = (d: number) => `~${Math.max(30, Math.round(d * 0.65))}–${Math.min(1500, Math.round(d * 1.55))} ft`;
 
 export default function SentinelScreen(props: SentinelProps) {
   const { isMonitoring, modelReady, statusText, level, peakLevel, specimenCount, threats, lastAlert } = props;
+
+  const nearest = threats.length ? Math.min(...threats.map((t) => t.distance)) : 0;
+  const topConf = threats.length ? Math.max(...threats.map((t) => t.confidence)) : 0;
+  const maxRange = Math.max(600, ...threats.map((t) => t.distance * 1.2));
+
+  let posture = { label: 'IDLE', color: COLORS.muted };
+  if (isMonitoring) {
+    if (threats.some((t) => t.distance < 150)) posture = { label: 'THREAT', color: COLORS.danger };
+    else if (threats.length) posture = { label: 'CONTACT', color: COLORS.warning };
+    else posture = { label: 'SCANNING', color: COLORS.teal };
+  }
+
+  const scopeContacts: ScopeContact[] = threats.map((t) => ({
+    id: t.id,
+    distance: t.distance,
+    bearing: t.bearing,
+    isUnknownBuild: !!t.isUnknownBuild,
+  }));
+
   return (
-    <View style={s.container}>
-      <View style={s.header}>
-        <Text style={s.title}>CORVUS SENTINEL</Text>
-        <View style={[s.badge, { backgroundColor: isMonitoring ? COLORS.tealLight : COLORS.muted }]}>
-          <Text style={s.badgeText}>{isMonitoring ? 'ACTIVE' : 'IDLE'}</Text>
-        </View>
-      </View>
+    <View style={s.fill}>
+      <AppHeader title="CORVUS" accent="SENTINEL" brand right={<Pill label={posture.label} color={posture.color} dot />} />
 
-      <Text style={s.status}>{statusText}</Text>
-      {specimenCount > 0 && (
-        <Text style={s.specimens}>Specimen library: {specimenCount} unknown-build capture{specimenCount === 1 ? '' : 's'}</Text>
-      )}
+      <Text style={s.status} numberOfLines={1}>
+        {statusText}
+      </Text>
 
-      <View style={s.meterTrack}>
-        <View style={[s.meterFill, { width: `${Math.min(100, Math.round(level * 100))}%` }]} />
-        <View style={[s.peakMarker, { left: `${Math.min(99, Math.round(peakLevel * 100))}%` }]} />
-      </View>
-
-      {isMonitoring && (
-        <View style={s.locate}>
-          <View style={s.itemRow}>
-            <Text style={s.locateTitle}>LOCATE · rotate to peak</Text>
-            <TouchableOpacity onPress={props.onResetPeak}>
-              <Text style={s.locateReset}>RESET PEAK</Text>
+      <View style={s.scopeWrap}>
+        <RadarScope active={isMonitoring} contacts={scopeContacts} maxRangeFt={maxRange} size={236} />
+        {isMonitoring && (
+          <View style={s.locateRow}>
+            <Text style={s.locate}>◎ rotate to peak · signal {Math.round(level * 100)}%</Text>
+            <TouchableOpacity onPress={props.onResetPeak} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={s.reset}>peak {Math.round(peakLevel * 100)}% · reset</Text>
             </TouchableOpacity>
           </View>
-          <Text style={s.locateHint}>
-            Turn slowly in a full circle. Your body shadows the mic, so the signal peaks when you
-            face the contact. Coarse direction aid — not a precise bearing.
-          </Text>
-          <View style={s.itemRow}>
-            <Text style={s.detail}>signal {Math.round(level * 100)}%</Text>
-            <Text style={[s.detail, { color: COLORS.gold }]}>peak {Math.round(peakLevel * 100)}%</Text>
-          </View>
-        </View>
-      )}
-
-      <View style={s.card}>
-        <Text style={s.cardTitle}>ACTIVE THREATS</Text>
-        <Text style={s.count}>{threats.length}</Text>
+        )}
       </View>
 
-      {threats.length > 0 ? (
-        <ScrollView style={s.list}>
-          {threats.map((t) => (
-            <TouchableOpacity
-              key={t.id}
-              style={[s.item, { borderLeftColor: t.isUnknownBuild ? COLORS.warning : sevColor(t.distance) }]}
-              onPress={() => props.onSelectThreat(t)}
-              activeOpacity={0.7}
-            >
-              <View style={s.itemRow}>
-                <Text style={s.itemType}>{t.type}</Text>
-                <Text style={s.itemConf}>{Math.round(t.confidence)}%</Text>
-              </View>
-              {t.isUnknownBuild && (
-                <Text style={s.homemadeFlag}>⚠ POSSIBLE HOMEMADE / UNKNOWN BUILD</Text>
-              )}
-              <View style={s.itemRow}>
-                <Text style={s.detail}>{rangeBand(t.distance)}</Text>
-                <Text style={s.detail}>{t.bearing >= 0 ? `${Math.round(t.bearing)}°` : 'no bearing'}</Text>
-                <Text style={[s.detail, { color: sevColor(t.distance) }]}>{t.status}</Text>
-              </View>
-              <Text style={s.tapHint}>tap for detail ›</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      ) : (
-        <View style={s.empty}>
-          <Text style={s.emptyText}>
-            {isMonitoring ? 'Listening… no airborne contacts.' : 'Press START to begin monitoring.'}
-          </Text>
-        </View>
-      )}
+      <View style={s.chips}>
+        <MetricChip value={String(threats.length)} label="CONTACTS" />
+        <View style={{ width: 8 }} />
+        <MetricChip value={threats.length ? `${Math.round(topConf)}%` : '—'} label="TOP CONF" color={COLORS.teal} />
+        <View style={{ width: 8 }} />
+        <MetricChip value={threats.length ? String(Math.round(nearest)) : '—'} label="NEAREST FT" color={threats.length ? sevColor(nearest) : COLORS.ink} />
+      </View>
 
       {lastAlert && (
         <View style={s.alert}>
-          <Text style={s.alertText}>{lastAlert.message}</Text>
+          <MaterialCommunityIcons name="alert" size={14} color={COLORS.danger} />
+          <Text style={s.alertText} numberOfLines={2}>
+            {lastAlert.message}
+          </Text>
         </View>
       )}
 
-      <View style={s.controls}>
-        <TouchableOpacity
-          style={[s.btn, { backgroundColor: isMonitoring ? COLORS.danger : COLORS.tealLight, opacity: modelReady ? 1 : 0.4 }]}
-          disabled={!modelReady}
-          onPress={props.onToggle}
-        >
-          <Text style={s.btnText}>{isMonitoring ? 'STOP' : 'START'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.btn, { backgroundColor: COLORS.gold }]} onPress={props.onReport}>
-          <Text style={s.btnText}>REPORT</Text>
-        </TouchableOpacity>
-      </View>
+      {threats.length > 0 ? (
+        <ScrollView style={s.list} showsVerticalScrollIndicator={false}>
+          {threats.map((t) => (
+            <ContactRow key={t.id} t={t} onPress={() => props.onSelectThreat(t)} />
+          ))}
+        </ScrollView>
+      ) : (
+        <EmptyState
+          icon={isMonitoring ? 'radar' : 'power'}
+          text={isMonitoring ? 'Listening — no airborne contacts.' : 'Press START to begin monitoring.'}
+        />
+      )}
+
+      {specimenCount > 0 && (
+        <Text style={s.specimens}>
+          <MaterialCommunityIcons name="dna" size={11} color={COLORS.gold} /> specimen library · {specimenCount} unknown-build capture{specimenCount === 1 ? '' : 's'}
+        </Text>
+      )}
 
       <View style={s.controls}>
-        <TouchableOpacity style={[s.btnSec]} onPress={() => props.onNavigate('map')}>
-          <Text style={s.btnSecText}>MAP</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.btnSec]} onPress={() => props.onNavigate('remoteid')}>
-          <Text style={s.btnSecText}>REMOTE ID · RF</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.btnSec]} onPress={() => props.onNavigate('analysis')}>
-          <Text style={s.btnSecText}>ANALYSIS</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={s.controls}>
-        <TouchableOpacity style={[s.btnSec]} onPress={() => props.onNavigate('training')}>
-          <Text style={s.btnSecText}>CAPTURE</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.btnSec]} onPress={() => props.onNavigate('detections')}>
-          <Text style={s.btnSecText}>SESSION LOG</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.btnSec]} onPress={() => props.onNavigate('settings')}>
-          <Text style={s.btnSecText}>SETTINGS</Text>
-        </TouchableOpacity>
+        <PrimaryButton
+          label={isMonitoring ? 'STOP' : 'START'}
+          icon={isMonitoring ? 'stop' : 'play'}
+          colors={isMonitoring ? ['#FF5A5F', '#E0353B'] : ['#13B6BB', '#0D7E86']}
+          glow={isMonitoring ? COLORS.danger : COLORS.teal}
+          disabled={!modelReady}
+          onPress={props.onToggle}
+        />
+        <View style={{ width: 12 }} />
+        <IconButton icon="file-document-outline" onPress={props.onReport} />
       </View>
     </View>
   );
 }
 
+function ContactRow({ t, onPress }: { t: Threat; onPress: () => void }) {
+  const col = t.isUnknownBuild ? COLORS.warning : sevColor(t.distance);
+  const conf = Math.round(t.confidence);
+  return (
+    <TouchableOpacity style={[s.card, { borderLeftColor: col }]} onPress={onPress} activeOpacity={0.75}>
+      <View style={s.cardRow}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 }}>
+          <MaterialCommunityIcons name={t.isUnknownBuild ? 'alert-rhombus' : 'quadcopter'} size={17} color={t.isUnknownBuild ? COLORS.warning : '#AEB9C8'} />
+          <Text style={s.cardType} numberOfLines={1}>
+            {t.type}
+          </Text>
+        </View>
+        <Text style={s.cardConf}>{conf}%</Text>
+      </View>
+      <View style={s.bar}>
+        <View style={[s.barFill, { width: `${conf}%`, backgroundColor: col }]} />
+      </View>
+      <View style={s.cardRow}>
+        <Text style={s.detail}>
+          {rangeBand(t.distance)} · {t.bearing >= 0 ? `${Math.round(t.bearing)}°` : 'no bearing'}
+        </Text>
+        <Pill label={t.status.toUpperCase()} color={col} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.darkNavy, padding: 16, paddingTop: 56 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomColor: COLORS.gold, borderBottomWidth: 2, paddingBottom: 10 },
-  title: { fontSize: 20, fontWeight: '700', color: COLORS.lightGray, letterSpacing: 1 },
-  badge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14 },
-  badgeText: { fontSize: 11, fontWeight: '700', color: COLORS.darkNavy },
-  status: { color: COLORS.muted, fontSize: 12, marginTop: 10 },
-  specimens: { color: COLORS.gold, fontSize: 11, marginTop: 4 },
-  meterTrack: { height: 6, backgroundColor: COLORS.panel, borderRadius: 3, marginTop: 6, marginBottom: 14, position: 'relative' },
-  meterFill: { height: 6, backgroundColor: COLORS.tealLight, borderRadius: 3 },
-  peakMarker: { position: 'absolute', top: -2, width: 3, height: 10, backgroundColor: COLORS.gold, borderRadius: 1 },
-  locate: { backgroundColor: COLORS.panel, borderColor: COLORS.tealDark, borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 14 },
-  locateTitle: { color: COLORS.tealLight, fontWeight: '700', fontSize: 12, letterSpacing: 1 },
-  locateReset: { color: COLORS.gold, fontWeight: '700', fontSize: 11, letterSpacing: 1 },
-  locateHint: { color: COLORS.muted, fontSize: 11, marginVertical: 6, lineHeight: 15 },
-  card: { backgroundColor: COLORS.panel, borderColor: COLORS.tealDark, borderWidth: 1, borderRadius: 8, padding: 16, marginBottom: 14 },
-  cardTitle: { fontSize: 12, color: COLORS.gold, fontWeight: '700', textTransform: 'uppercase' },
-  count: { fontSize: 40, fontWeight: '800', color: COLORS.tealLight },
-  list: { flex: 1, marginBottom: 12 },
-  item: { backgroundColor: COLORS.panel, borderLeftWidth: 4, borderRadius: 6, padding: 12, marginBottom: 8 },
-  itemRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  itemType: { color: COLORS.lightGray, fontWeight: '700', fontSize: 15 },
-  itemConf: { color: COLORS.gold, fontWeight: '700' },
-  homemadeFlag: { color: COLORS.warning, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, marginTop: 3 },
-  tapHint: { color: COLORS.tealDark, fontSize: 10, textAlign: 'right', marginTop: 4 },
-  detail: { color: COLORS.muted, fontSize: 12 },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { color: COLORS.muted, textAlign: 'center', paddingHorizontal: 24 },
-  alert: { backgroundColor: '#E74C3C22', borderColor: COLORS.danger, borderWidth: 1, borderRadius: 6, padding: 10, marginBottom: 10 },
-  alertText: { color: COLORS.lightGray, fontSize: 13 },
-  controls: { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  btn: { flex: 1, paddingVertical: 14, borderRadius: 6, alignItems: 'center' },
-  btnText: { fontWeight: '800', color: COLORS.darkNavy, letterSpacing: 1 },
-  btnSec: { flex: 1, paddingVertical: 12, borderRadius: 6, alignItems: 'center', borderWidth: 1, borderColor: COLORS.tealDark },
-  btnSecText: { fontWeight: '700', color: COLORS.tealLight, fontSize: 12, letterSpacing: 1 },
+  fill: { flex: 1 },
+  status: { fontFamily: FONTS.monoR, color: COLORS.muted, fontSize: 11, marginTop: 9 },
+  scopeWrap: { alignItems: 'center', marginTop: 4 },
+  locateRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: -6, marginBottom: 2, paddingHorizontal: 4 },
+  locate: { fontFamily: FONTS.display, color: COLORS.muted, fontSize: 10, letterSpacing: 0.5 },
+  reset: { fontFamily: FONTS.display, color: COLORS.gold, fontSize: 10, letterSpacing: 0.5 },
+  chips: { flexDirection: 'row', marginTop: 8 },
+  alert: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#FF4D5218', borderColor: COLORS.danger + '66', borderWidth: StyleSheet.hairlineWidth, borderRadius: RADII.sm, padding: 8, marginTop: 10 },
+  alertText: { fontFamily: FONTS.body, color: COLORS.ink, fontSize: 12, flex: 1 },
+  list: { flex: 1, marginTop: 10 },
+  card: { backgroundColor: COLORS.panel, borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.panelBorder, borderLeftWidth: 3, borderRadius: RADII.sm, padding: 10, marginBottom: 8 },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardType: { fontFamily: FONTS.displayBold, color: COLORS.ink, fontSize: 14, letterSpacing: 0.3 },
+  cardConf: { fontFamily: FONTS.mono, color: COLORS.gold, fontSize: 13, fontWeight: '700' },
+  bar: { height: 5, borderRadius: 3, backgroundColor: '#0D1726', overflow: 'hidden', marginVertical: 7 },
+  barFill: { height: 5, borderRadius: 3 },
+  detail: { fontFamily: FONTS.monoR, color: COLORS.muted, fontSize: 10.5 },
+  specimens: { fontFamily: FONTS.body, color: COLORS.gold, fontSize: 11, marginTop: 8, textAlign: 'center' },
+  controls: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 6 },
 });
