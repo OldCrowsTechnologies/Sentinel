@@ -8,8 +8,9 @@
  * SECURITY: the ElevenLabs API key is NEVER bundled in the app. Any
  * EXPO_PUBLIC_* var is baked into the APK and is trivially extractable, so the
  * key lives server-side in ocws-site (process.env.ELEVENLABS_API_KEY) behind
- * the /api/corvus/tts proxy. When the spoken voice is restored, this module
- * POSTs the brief text to that endpoint and plays back the returned audio/mpeg
+ * the /api/elevenlabs/speak proxy (already live in production). When the spoken
+ * voice is restored, this module POSTs { text } to that endpoint (it returns
+ * audio/mpeg for the locked Corvus voice) and plays back the returned audio
  * (prefer `expo-audio`); it must NOT call api.elevenlabs.io directly and must
  * NOT hold a key. The endpoint URL (not a secret) is overridable via
  * EXPO_PUBLIC_CORVUS_TTS_URL, mirroring specimenSync's library URL.
@@ -36,7 +37,7 @@ const SIGN_OFF = 'Corvus. Old Crows Wireless Solutions. We Always Find the Signa
 // Server-side TTS proxy that holds the ElevenLabs key (ocws-site). The mobile
 // app only ever sees this URL, never a key. Override per-environment with
 // EXPO_PUBLIC_CORVUS_TTS_URL.
-const DEFAULT_TTS_URL = 'https://www.oldcrowswireless.com/api/corvus/tts';
+const DEFAULT_TTS_URL = 'https://www.oldcrowswireless.com/api/elevenlabs/speak';
 const TTS_URL = process.env.EXPO_PUBLIC_CORVUS_TTS_URL || DEFAULT_TTS_URL;
 
 export class CorvusVoice {

@@ -27,7 +27,7 @@ type ScreenName = 'sentinel' | 'settings' | 'detections' | 'remoteid' | 'map' | 
 
 // NOTE: the ElevenLabs key is NEVER bundled here. Any EXPO_PUBLIC_* var is baked
 // into the APK and is trivially extractable, so voice synthesis is proxied
-// server-side via ocws-site (/api/corvus/tts). See lib/corvusVoice.ts.
+// server-side via ocws-site (/api/elevenlabs/speak). See lib/corvusVoice.ts.
 const SILENCE_RMS = 0.004; // below this, treat window as silence (force "None")
 
 export default function App() {

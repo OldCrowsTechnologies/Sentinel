@@ -43,7 +43,7 @@ Corvus Sentinel/
 │   ├── mlClassifier.ts     # loads JSON brain, MLP forward + softmax
 │   ├── audioCapture.ts     # real-time mic → analysis windows
 │   ├── threatTracker.ts    # dedup, trajectory, alerts
-│   ├── corvusVoice.ts      # TTS via server proxy (/api/corvus/tts) + haptics
+│   ├── corvusVoice.ts      # TTS via server proxy (/api/elevenlabs/speak) + haptics
 │   ├── reportGenerator.ts  # HTML After-Action Report
 │   └── theme.ts            # OCWS palette
 ├── assets/

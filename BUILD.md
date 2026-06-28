@@ -94,7 +94,7 @@ sideload directly, no Play Store.
 ## 6. Voice briefs
 
 Corvus voice is synthesized **server-side**. The ElevenLabs key is held by
-ocws-site (`ELEVENLABS_API_KEY` in server env) behind `/api/corvus/tts` — it is
+ocws-site (`ELEVENLABS_API_KEY` in server env) behind `/api/elevenlabs/speak` — it is
 **never** bundled in the app. Any `EXPO_PUBLIC_*` var is baked into the APK and
 is trivially extractable, so no key belongs on the device.
 
