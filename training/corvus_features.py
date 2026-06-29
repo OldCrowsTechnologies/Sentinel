@@ -22,6 +22,7 @@ Feature vector layout (length = 2*N_MELS + N_BAND_RATIOS):
     band_ratio[0..N_BAND_RATIOS-1] ]
 """
 
+import os
 import numpy as np
 
 # ---------------------------------------------------------------------------
@@ -41,6 +42,20 @@ FMAX = 8000.0       # highest mel edge (Hz) == Nyquist for SR=16000
 # it on -- keep both in lockstep or parity breaks (run_parity.sh).
 HIGH_PASS_ENABLED = True
 HIGH_PASS_FC = 400.0  # Hz
+
+# Stationarity gate: a per-frequency-bin gain = median/mean of that bin's power
+# across the window's frames. A drone's blade-pass comb is STATIONARY (present in
+# ~every frame) so median~mean -> gain~1 (kept); voice/crowd is NON-STATIONARY
+# (bursty) so median<<mean -> gain<1 (suppressed). This raises drone SNR in
+# crowds. FEATURE-PATH change -> lib/dsp.ts mirrors it and it's trained-in; keep
+# in lockstep (run_parity.sh). gain is clamped to <=1 (never amplifies).
+STATIONARITY_ENABLED = True
+STATIONARITY_EPS = 1e-10
+STATIONARITY_MIN_FRAMES = 4  # need a few frames for a meaningful median
+# Suppression floor: gain is clamped to [FLOOR, 1]. 0 = full suppression (also
+# erodes drones' own harmonic wander); ~0.5 keeps drone structure while still
+# knocking down bursty crowd/voice. Sweep-tuned; env override for experiments.
+STATIONARITY_FLOOR = float(os.environ.get("CORVUS_STAT_FLOOR", "0.5"))
 
 # Drone-band energy ratios (Hz ranges) -- documented blade-pass regions.
 # These give the classifier explicit, interpretable handles on each platform.
@@ -159,6 +174,15 @@ def extract_features(x, sr=SR):
     windowed = frames * HANN[None, :]
     spec = np.fft.rfft(windowed, n=NFFT, axis=1)
     power = (np.abs(spec) ** 2)               # (n_frames, n_bins)
+
+    # Stationarity gate (mirror of lib/dsp.ts): suppress non-stationary
+    # (voice/crowd) energy, keep steady drone tones. Applied to power before mel
+    # + band ratios so both feature families see the cleaned spectrum.
+    if STATIONARITY_ENABLED and power.shape[0] >= STATIONARITY_MIN_FRAMES:
+        med = np.median(power, axis=0)        # per-bin temporal median
+        mn = power.mean(axis=0)               # per-bin temporal mean
+        gain = np.maximum(STATIONARITY_FLOOR, np.minimum(1.0, med / (mn + STATIONARITY_EPS)))
+        power = power * gain[None, :]
 
     # Mel energies (log)
     mel_energy = power @ MEL_FB.T             # (n_frames, N_MELS)

@@ -26,7 +26,7 @@ import { extractFeatures } from './dsp.ts';
 import { standardize, forwardMLP } from './mlClassifier.ts';
 const model = JSON.parse(fs.readFileSync(new URL('./model.json', import.meta.url),'utf8'));
 const { cases } = JSON.parse(fs.readFileSync(new URL('./parity_cases.json', import.meta.url),'utf8'));
-const cfg={sampleRate:model.dsp.sampleRate,nfft:model.dsp.nfft,hop:model.dsp.hop,nMels:model.dsp.nMels,bandRatios:model.dsp.bandRatios,melFilterbank:model.dsp.melFilterbank,highPass:model.dsp.highPass};
+const cfg={sampleRate:model.dsp.sampleRate,nfft:model.dsp.nfft,hop:model.dsp.hop,nMels:model.dsp.nMels,bandRatios:model.dsp.bandRatios,melFilterbank:model.dsp.melFilterbank,highPass:model.dsp.highPass,stationarity:model.dsp.stationarity};
 let maxAbs=0,maxProb=0,match=0;
 for(const c of cases){
   const f=extractFeatures(Float64Array.from(c.samples),cfg);

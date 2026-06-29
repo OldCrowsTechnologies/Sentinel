@@ -17,6 +17,7 @@ export interface DspConfig {
   bandRatios: [number, number][];
   melFilterbank: number[][]; // (nMels, nfft/2+1), exported by the trainer
   highPass?: { enabled: boolean; fc: number; order: number };
+  stationarity?: { enabled: boolean; eps: number; minFrames?: number; floor?: number };
 }
 
 /**
@@ -144,14 +145,11 @@ export function extractFeatures(samples: ArrayLike<number>, cfg: DspConfig): Flo
 
   const nFrames = 1 + Math.floor((x.length - nfft) / hop);
 
-  const melMean = new Float64Array(nMels);
-  const melSqAcc = new Float64Array(nMels); // for std
-  const melFrames: Float64Array[] = [];
-  const meanPower = new Float64Array(nBins);
-
   const re = new Float64Array(nfft);
   const im = new Float64Array(nfft);
 
+  // Pass 1: power spectrum per frame (kept for the stationarity gate)
+  const powerFrames: Float64Array[] = [];
   for (let f = 0; f < nFrames; f++) {
     const start = f * hop;
     for (let i = 0; i < nfft; i++) {
@@ -159,20 +157,53 @@ export function extractFeatures(samples: ArrayLike<number>, cfg: DspConfig): Flo
       im[i] = 0;
     }
     fftRadix2(re, im);
-
-    // power spectrum (first nBins)
     const power = new Float64Array(nBins);
-    for (let k = 0; k < nBins; k++) {
-      power[k] = re[k] * re[k] + im[k] * im[k];
-      meanPower[k] += power[k];
-    }
+    for (let k = 0; k < nBins; k++) power[k] = re[k] * re[k] + im[k] * im[k];
+    powerFrames.push(power);
+  }
 
-    // mel energies (log)
+  // Stationarity gate: per-bin gain = min(1, median/mean) over frames. EXACT
+  // mirror of corvus_features.py (parity-critical). Steady drone tones kept;
+  // bursty voice/crowd attenuated. Skipped (gain=1) when disabled / too few frames.
+  const gain = new Float64Array(nBins).fill(1);
+  const st = cfg.stationarity;
+  if (st && st.enabled && nFrames >= (st.minFrames ?? 4)) {
+    const eps = st.eps;
+    const floor = st.floor ?? 0;
+    const col = new Float64Array(nFrames);
+    const half = nFrames >> 1;
+    for (let k = 0; k < nBins; k++) {
+      let sum = 0;
+      for (let f = 0; f < nFrames; f++) {
+        const v = powerFrames[f][k];
+        col[f] = v;
+        sum += v;
+      }
+      const mean = sum / nFrames;
+      col.sort();
+      const med = nFrames % 2 ? col[half] : 0.5 * (col[half - 1] + col[half]);
+      let g = med / (mean + eps);
+      if (g > 1) g = 1;
+      if (g < floor) g = floor;
+      gain[k] = g;
+    }
+  }
+
+  // Pass 2: apply gain, then mel (log) + mean power for band ratios
+  const melMean = new Float64Array(nMels);
+  const melFrames: Float64Array[] = [];
+  const meanPower = new Float64Array(nBins);
+  for (let f = 0; f < nFrames; f++) {
+    const pw = powerFrames[f];
+    for (let k = 0; k < nBins; k++) {
+      pw[k] *= gain[k];
+      meanPower[k] += pw[k];
+    }
     const logMel = new Float64Array(nMels);
     for (let m = 0; m < nMels; m++) {
       const fb = melFilterbank[m];
       let e = 0;
-      for (let k = 0; k < nBins; k++) e += power[k] * fb[k];
+      for (let k = 0; k < nBins; k++) e += pw[k] * fb[k];
       logMel[m] = Math.log(e + 1e-10);
       melMean[m] += logMel[m];
     }
@@ -180,6 +211,7 @@ export function extractFeatures(samples: ArrayLike<number>, cfg: DspConfig): Flo
   }
 
   for (let m = 0; m < nMels; m++) melMean[m] /= nFrames;
+  const melSqAcc = new Float64Array(nMels);
   for (let f = 0; f < nFrames; f++) {
     for (let m = 0; m < nMels; m++) {
       const d = melFrames[f][m] - melMean[m];
