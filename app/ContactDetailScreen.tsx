@@ -13,7 +13,7 @@ import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import { COLORS, FONTS, RADII, sevColor, rangeBand } from '../lib/theme';
 import { SectionLabel, KV, Pill, PrimaryButton, IconButton } from './ui';
 import type { Threat } from '../lib/threatTracker';
-import { getReference, possibleSpec } from '../lib/droneReference';
+import { getReference, possibleSpec, faaClassInfo, faaClassFromSizeClass } from '../lib/droneReference';
 
 function fmt(ts: number): string {
   return new Date(ts).toISOString().replace('T', ' ').slice(11, 19) + 'Z';
@@ -75,6 +75,8 @@ export default function ContactDetailScreen({
   const bearing =
     threat.bearing >= 0 ? `${Math.round(threat.bearing)}°` : 'no bearing (single mic)';
   const statusColor = threat.isUnknownBuild ? COLORS.warning : sevColor(threat.distance);
+  const faa = faaClassInfo(ref ? ref.faaClass : faaClassFromSizeClass(threat.sizeClass ?? null));
+  const details = ref ? `${ref.make} ${ref.model} · ${ref.build}` : 'Homemade / unknown build (est.)';
 
   return (
     <View style={s.overlay}>
@@ -118,6 +120,24 @@ export default function ContactDetailScreen({
             <View style={s.ringMeta}>
               <Text style={s.ringLabel}>CONFIDENCE</Text>
               <Pill label={threat.status.toUpperCase()} color={statusColor} dot />
+            </View>
+          </View>
+
+          {/* Class (FAA size) + specific details */}
+          <SectionLabel>CLASS · FAA SIZE</SectionLabel>
+          <View style={s.classBox}>
+            <View style={s.classHead}>
+              <MaterialCommunityIcons name="weight" size={20} color={COLORS.teal} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.className}>
+                  {faa.label} · {faa.bracket}
+                </Text>
+                <Text style={s.classNote}>{faa.note}</Text>
+              </View>
+            </View>
+            <View style={s.detailsRow}>
+              <Text style={s.detailsK}>DETAILS</Text>
+              <Text style={s.detailsV}>{details}</Text>
             </View>
           </View>
 
@@ -229,6 +249,13 @@ const s = StyleSheet.create({
   ringRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 14 },
   ringMeta: { gap: 6 },
   ringLabel: { fontFamily: FONTS.display, color: COLORS.muted, fontSize: 9.5, letterSpacing: 2 },
+  classBox: { backgroundColor: COLORS.panelAlt, borderRadius: RADII.sm, padding: 12, marginTop: 2 },
+  classHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  className: { fontFamily: FONTS.displayBold, color: COLORS.ink, fontSize: 15, letterSpacing: 0.4 },
+  classNote: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 11, marginTop: 1 },
+  detailsRow: { marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.panelBorder, paddingTop: 8 },
+  detailsK: { fontFamily: FONTS.display, color: COLORS.muted, fontSize: 9.5, letterSpacing: 2 },
+  detailsV: { fontFamily: FONTS.body, color: COLORS.ink, fontSize: 13, marginTop: 2 },
   specBox: { backgroundColor: COLORS.panelAlt, borderRadius: RADII.sm, paddingVertical: 4, paddingHorizontal: 0 },
   specLine: { fontFamily: FONTS.body, color: COLORS.ink, fontSize: 13, paddingVertical: 3, paddingHorizontal: 12, lineHeight: 18 },
   actions: { flexDirection: 'row', marginTop: 12 },

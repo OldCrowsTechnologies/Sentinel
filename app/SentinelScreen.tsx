@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, RADII, sevColor, rangeBand } from '../lib/theme';
 import { AppHeader, Pill, MetricChip, PrimaryButton, IconButton, EmptyState } from './ui';
 import RadarScope, { ScopeContact } from './RadarScope';
+import { getReference, faaClassInfo, faaClassFromSizeClass } from '../lib/droneReference';
 import type { Threat, AlertEvent } from '../lib/threatTracker';
 
 export interface SentinelProps {
@@ -117,17 +118,23 @@ export default function SentinelScreen(props: SentinelProps) {
 function ContactRow({ t, onPress }: { t: Threat; onPress: () => void }) {
   const col = t.isUnknownBuild ? COLORS.warning : sevColor(t.distance);
   const conf = Math.round(t.confidence);
+  const ref = getReference(t.type);
+  const faa = faaClassInfo(ref ? ref.faaClass : faaClassFromSizeClass(t.sizeClass ?? null));
+  const name = ref ? ref.displayName : t.isUnknownBuild ? 'Unknown / homemade build' : t.type;
   return (
     <TouchableOpacity style={[s.card, { borderLeftColor: col }]} onPress={onPress} activeOpacity={0.75}>
       <View style={s.cardRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 }}>
           <MaterialCommunityIcons name={t.isUnknownBuild ? 'alert-rhombus' : 'quadcopter'} size={17} color={t.isUnknownBuild ? COLORS.warning : '#AEB9C8'} />
           <Text style={s.cardType} numberOfLines={1}>
-            {t.type}
+            {name}
           </Text>
         </View>
         <Text style={s.cardConf}>{conf}%</Text>
       </View>
+      <Text style={s.faaLine} numberOfLines={1}>
+        {faa.label} · {faa.bracket}
+      </Text>
       <View style={s.bar}>
         <View style={[s.barFill, { width: `${conf}%`, backgroundColor: col }]} />
       </View>
@@ -156,6 +163,7 @@ const s = StyleSheet.create({
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardType: { fontFamily: FONTS.displayBold, color: COLORS.ink, fontSize: 14, letterSpacing: 0.3 },
   cardConf: { fontFamily: FONTS.mono, color: COLORS.gold, fontSize: 13, fontWeight: '700' },
+  faaLine: { fontFamily: FONTS.display, color: COLORS.teal, fontSize: 9.5, letterSpacing: 0.8, marginTop: 4 },
   bar: { height: 5, borderRadius: 3, backgroundColor: '#0D1726', overflow: 'hidden', marginVertical: 7 },
   barFill: { height: 5, borderRadius: 3 },
   detail: { fontFamily: FONTS.monoR, color: COLORS.muted, fontSize: 10.5 },

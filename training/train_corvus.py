@@ -51,25 +51,41 @@ OUT_PATH = os.path.join(HERE, "..", "assets", "models", "corvus-model.json")
 # Real-data loading
 # ---------------------------------------------------------------------------
 def _label_from_path(path):
-    """Infer class index from parent folder name or filename keyword."""
+    """Infer class index from parent folder name or filename keyword.
+
+    Indices are derived from LABELS (never hardcoded) so adding/reordering a
+    class can't silently mislabel a folder. We first try an exact match of a
+    parent folder against the canonical label set, then fall back to keyword
+    aliases that map to a canonical label NAME (resolved to its current index).
+    """
     parts = [p.lower() for p in path.replace("\\", "/").split("/")]
-    name = parts[-1]
     hay = " ".join(parts[-2:])
-    keymap = {
-        "none": 0, "noise": 0, "background": 0, "negative": 0, "ambient": 0,
-        "skydio": 1, "x2": 1,
-        "dji": 2, "phantom": 2, "mavic": 2,
-        "parrot": 3, "anafi": 3,
-        "unknown": 4, "other": 4,
-    }
+    lab_idx = {lab.lower(): i for i, lab in enumerate(LABELS)}
+
+    # 1) exact folder == canonical label (e.g. "Potensic Atom 2")
     for parent in reversed(parts[:-1]):
-        for k, v in keymap.items():
-            if k in parent:
-                return v
-    for k, v in keymap.items():
-        if k in hay:
-            return v
-    return None
+        if parent in lab_idx:
+            return lab_idx[parent]
+
+    # 2) keyword alias -> canonical label name -> current index
+    alias = {
+        "none": "None", "noise": "None", "background": "None", "negative": "None", "ambient": "None",
+        "skydio": "Skydio X2", "x2": "Skydio X2",
+        "dji": "DJI Phantom", "phantom": "DJI Phantom", "mavic": "DJI Phantom",
+        "parrot": "Parrot Anafi", "anafi": "Parrot Anafi",
+        "potensic": "Potensic Atom 2", "atom": "Potensic Atom 2",
+        "unknown": "Unknown", "other": "Unknown",
+    }
+    def _resolve(text):
+        for k, lab in alias.items():
+            if k in text and lab.lower() in lab_idx:
+                return lab_idx[lab.lower()]
+        return None
+    for parent in reversed(parts[:-1]):
+        r = _resolve(parent)
+        if r is not None:
+            return r
+    return _resolve(hay)
 
 
 def _load_wav_mono_16k(path):
@@ -93,6 +109,7 @@ def load_real_dataset(data_dir, win_sec=CLIP_SEC):
     paths = []
     for ext in ("wav", "WAV"):
         paths += glob.glob(os.path.join(data_dir, "**", f"*.{ext}"), recursive=True)
+    paths = sorted(set(os.path.normcase(os.path.abspath(p)) for p in paths))  # dedupe case-insensitive FS
     waves, labels = [], []
     win = int(SR * win_sec)
     skipped = 0

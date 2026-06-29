@@ -55,7 +55,7 @@ N_BAND_RATIOS = len(BAND_RATIOS)
 FEATURE_DIM = 2 * N_MELS + N_BAND_RATIOS
 
 # Class labels (index order is the model output order)
-LABELS = ["None", "Skydio X2", "DJI Phantom", "Parrot Anafi", "Unknown"]
+LABELS = ["None", "Skydio X2", "DJI Phantom", "Parrot Anafi", "Potensic Atom 2", "Unknown"]
 
 
 # ---------------------------------------------------------------------------

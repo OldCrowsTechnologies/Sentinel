@@ -20,5 +20,12 @@
     "typical_db_spl_at_100ft": [72, 78],
     "motor_type": "brushless DC quad",
     "notes": "lower-frequency signature, compact airframe"
+  },
+  "potensic_atom_2": {
+    "frequency_range_hz": [300, 1000],
+    "harmonics_hz": [330, 660, 990, 2330, 2580],
+    "typical_db_spl_at_100ft": [68, 74],
+    "motor_type": "brushless DC quad",
+    "notes": "measured from field capture (kpitts, 2026-06-29): low ~330 Hz blade-pass comb with a 2.3-2.7 kHz motor cluster. Sub-250 g micro; quieter than the others."
   }
 }

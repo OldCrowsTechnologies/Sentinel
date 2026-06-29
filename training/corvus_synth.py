@@ -28,7 +28,10 @@ DRONE_PROFILES = {
     "Skydio X2":    {"f0": (800, 1400),  "n_harm": 5, "rolloff": 0.65},
     "DJI Phantom":  {"f0": (1200, 1800), "n_harm": 4, "rolloff": 0.70},
     "Parrot Anafi": {"f0": (920, 1200),  "n_harm": 4, "rolloff": 0.60},
-    # Unknown = drone-like comb but fundamental outside the three known bands
+    # Potensic Atom 2 = sub-250 g micro; measured low ~330 Hz blade-pass comb
+    # (field capture, kpitts 2026-06-29) -- distinctly lower than the others.
+    "Potensic Atom 2": {"f0": (300, 380), "n_harm": 5, "rolloff": 0.60},
+    # Unknown = drone-like comb but fundamental outside the known bands
     "Unknown":      {"f0": (450, 700),   "n_harm": 5, "rolloff": 0.65},
 }
 
