@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, RADII, sevColor, rangeBand } from '../lib/theme';
@@ -36,12 +36,10 @@ export default function SentinelScreen(props: SentinelProps) {
     else posture = { label: 'SCANNING', color: COLORS.teal };
   }
 
-  const scopeContacts: ScopeContact[] = threats.map((t) => ({
-    id: t.id,
-    distance: t.distance,
-    bearing: t.bearing,
-    isUnknownBuild: !!t.isUnknownBuild,
-  }));
+  const scopeContacts = useMemo<ScopeContact[]>(
+    () => threats.map((t) => ({ id: t.id, distance: t.distance, bearing: t.bearing, isUnknownBuild: !!t.isUnknownBuild })),
+    [threats]
+  );
 
   return (
     <View style={s.fill}>
