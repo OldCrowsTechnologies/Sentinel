@@ -1,0 +1,3 @@
+# Generated stress reports are local artifacts, not source.
+*.html
+!.gitignore

@@ -12,7 +12,9 @@
     "parity": "bash training/run_parity.sh",
     "train": "python3 training/train_corvus.py",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test \"tests/**/*.test.mjs\""
+    "test": "node --experimental-strip-types --test \"tests/**/*.test.mjs\"",
+    "stress": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types stress/index.mjs",
+    "stress:soak": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --expose-gc --experimental-strip-types stress/index.mjs soak"
   },
   "dependencies": {
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
