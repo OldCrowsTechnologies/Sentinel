@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { COLORS, FONTS, RADII, sevColor } from '../lib/theme';
 import { AppHeader, EmptyState } from './ui';
-import { getReference, faaClassInfo, faaClassFromSizeClass } from '../lib/droneReference';
+import { getReference, contactClass } from '../lib/droneReference';
 import type { Threat } from '../lib/threatTracker';
 
 export interface DetectionsProps {
@@ -24,9 +24,9 @@ export default function DetectionsScreen({ log, onBack }: DetectionsProps) {
             .slice()
             .reverse()
             .map((d) => {
-              const accent = sevColor(d.distance);
               const ref = getReference(d.type);
-              const faa = faaClassInfo(ref ? ref.faaClass : faaClassFromSizeClass(d.sizeClass ?? null));
+              const badge = contactClass(ref, d.sizeClass ?? null);
+              const accent = ref?.manned ? COLORS.teal : sevColor(d.distance);
               const name = ref ? ref.displayName : d.isUnknownBuild ? 'Unknown / homemade build' : d.type;
               return (
                 <View key={d.id} style={[s.card, { borderLeftColor: accent }]}>
@@ -35,7 +35,7 @@ export default function DetectionsScreen({ log, onBack }: DetectionsProps) {
                     <Text style={s.conf}>{Math.round(d.confidence)}%</Text>
                   </View>
                   <Text style={s.faaLine}>
-                    {faa.label} · {faa.bracket}
+                    {badge.label} · {badge.bracket}
                   </Text>
                   <Text style={s.detail}>
                     closest ~{Math.round(d.distance)}ft · {d.trajectory.length} hits

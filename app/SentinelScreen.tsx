@@ -4,7 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, RADII, sevColor, rangeBand } from '../lib/theme';
 import { AppHeader, Pill, MetricChip, PrimaryButton, IconButton, EmptyState } from './ui';
 import RadarScope, { ScopeContact } from './RadarScope';
-import { getReference, faaClassInfo, faaClassFromSizeClass } from '../lib/droneReference';
+import { getReference, contactClass } from '../lib/droneReference';
 import type { Threat, AlertEvent } from '../lib/threatTracker';
 
 export interface SentinelProps {
@@ -114,24 +114,28 @@ export default function SentinelScreen(props: SentinelProps) {
 }
 
 function ContactRow({ t, onPress }: { t: Threat; onPress: () => void }) {
-  const col = t.isUnknownBuild ? COLORS.warning : sevColor(t.distance);
   const conf = Math.round(t.confidence);
   const ref = getReference(t.type);
-  const faa = faaClassInfo(ref ? ref.faaClass : faaClassFromSizeClass(t.sizeClass ?? null));
+  const badge = contactClass(ref, t.sizeClass ?? null);
+  const col = ref?.manned ? COLORS.teal : t.isUnknownBuild ? COLORS.warning : sevColor(t.distance);
   const name = ref ? ref.displayName : t.isUnknownBuild ? 'Unknown / homemade build' : t.type;
   return (
     <TouchableOpacity style={[s.card, { borderLeftColor: col }]} onPress={onPress} activeOpacity={0.75}>
       <View style={s.cardRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 }}>
-          <MaterialCommunityIcons name={t.isUnknownBuild ? 'alert-rhombus' : 'quadcopter'} size={17} color={t.isUnknownBuild ? COLORS.warning : '#AEB9C8'} />
+          <MaterialCommunityIcons
+            name={ref?.manned ? 'helicopter' : t.isUnknownBuild ? 'alert-rhombus' : 'quadcopter'}
+            size={17}
+            color={ref?.manned ? COLORS.teal : t.isUnknownBuild ? COLORS.warning : '#AEB9C8'}
+          />
           <Text style={s.cardType} numberOfLines={1}>
             {name}
           </Text>
         </View>
         <Text style={s.cardConf}>{conf}%</Text>
       </View>
-      <Text style={s.faaLine} numberOfLines={1}>
-        {faa.label} · {faa.bracket}
+      <Text style={[s.faaLine, ref?.manned && { color: COLORS.muted }]} numberOfLines={1}>
+        {badge.label} · {badge.bracket}
       </Text>
       <View style={s.bar}>
         <View style={[s.barFill, { width: `${conf}%`, backgroundColor: col }]} />

@@ -13,7 +13,7 @@ import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import { COLORS, FONTS, RADII, sevColor, rangeBand } from '../lib/theme';
 import { SectionLabel, KV, Pill, PrimaryButton, IconButton } from './ui';
 import type { Threat } from '../lib/threatTracker';
-import { getReference, possibleSpec, faaClassInfo, faaClassFromSizeClass } from '../lib/droneReference';
+import { getReference, possibleSpec, contactClass } from '../lib/droneReference';
 
 function fmt(ts: number): string {
   return new Date(ts).toISOString().replace('T', ' ').slice(11, 19) + 'Z';
@@ -75,8 +75,12 @@ export default function ContactDetailScreen({
   const bearing =
     threat.bearing >= 0 ? `${Math.round(threat.bearing)}°` : 'no bearing (single mic)';
   const statusColor = threat.isUnknownBuild ? COLORS.warning : sevColor(threat.distance);
-  const faa = faaClassInfo(ref ? ref.faaClass : faaClassFromSizeClass(threat.sizeClass ?? null));
-  const details = ref ? `${ref.make} ${ref.model} · ${ref.build}` : 'Homemade / unknown build (est.)';
+  const badge = contactClass(ref, threat.sizeClass ?? null);
+  const details = ref
+    ? ref.manned
+      ? ref.build
+      : `${ref.make} ${ref.model} · ${ref.build}`
+    : 'Homemade / unknown build (est.)';
 
   return (
     <View style={s.overlay}>
@@ -124,15 +128,15 @@ export default function ContactDetailScreen({
           </View>
 
           {/* Class (FAA size) + specific details */}
-          <SectionLabel>CLASS · FAA SIZE</SectionLabel>
+          <SectionLabel>{badge.threat ? 'CLASS · FAA SIZE' : 'CLASS'}</SectionLabel>
           <View style={s.classBox}>
             <View style={s.classHead}>
-              <MaterialCommunityIcons name="weight" size={20} color={COLORS.teal} />
+              <MaterialCommunityIcons name={ref?.manned ? 'helicopter' : 'weight'} size={20} color={COLORS.teal} />
               <View style={{ flex: 1 }}>
                 <Text style={s.className}>
-                  {faa.label} · {faa.bracket}
+                  {badge.label} · {badge.bracket}
                 </Text>
-                <Text style={s.classNote}>{faa.note}</Text>
+                <Text style={s.classNote}>{badge.note}</Text>
               </View>
             </View>
             <View style={s.detailsRow}>

@@ -47,7 +47,8 @@ export function faaClassFromSizeClass(sizeClass: string | null): FaaSizeClass {
 export interface DroneReference {
   label: string; // classifier label / library key
   displayName: string; // make + model headline
-  faaClass: FaaSizeClass; // CLASS (size category)
+  faaClass?: FaaSizeClass; // CLASS (size category); absent for non-UAS (manned) entries
+  manned?: boolean; // true = crewed aircraft (helicopter), NOT a UAS / not a threat
   make: string;
   model: string;
   build: string; // DETAILS: commercial / prosumer / homemade, etc.
@@ -57,6 +58,23 @@ export interface DroneReference {
   weight: string;
   role: string;
   image: number | null; // require(...) when a licensed photo is added; else null
+}
+
+export interface ClassBadge {
+  label: string;
+  bracket: string;
+  note: string;
+  threat: boolean; // false for manned aircraft -> UI should not alarm
+}
+
+// The CLASS badge for a contact: FAA size category for a UAS, or a
+// manned-aircraft badge for a crewed helicopter (explicitly not a threat).
+export function contactClass(ref: DroneReference | null, sizeClass: string | null): ClassBadge {
+  if (ref?.manned) {
+    return { label: 'Manned aircraft', bracket: 'crewed rotorcraft', note: 'Not a UAS — not a drone threat', threat: false };
+  }
+  const info = faaClassInfo(ref?.faaClass ?? faaClassFromSizeClass(sizeClass));
+  return { label: info.label, bracket: info.bracket, note: info.note, threat: true };
 }
 
 // Public, commonly-cited specs (approximate). Keep coarse; this is a reference
@@ -117,6 +135,23 @@ const REFERENCES: Record<string, DroneReference> = {
     size: '≈ 14.5 cm folded',
     weight: '≈ 249 g (0.55 lb)',
     role: 'Consumer photography/FPV; 249 g stays under the 250 g FAA registration line',
+    image: null,
+  },
+  // Crewed helicopter — NOT a UAS. Classified so the app can say "manned
+  // rotorcraft, not a threat" instead of false-alarming on it. Learned from real
+  // captures under data/recordings/Manned rotorcraft/.
+  'Manned rotorcraft': {
+    label: 'Manned rotorcraft',
+    displayName: 'Manned rotorcraft (helicopter)',
+    manned: true,
+    make: '—',
+    model: 'crewed helicopter',
+    build: 'Crewed aircraft — NOT a UAS / not a drone threat',
+    type: 'Manned rotary-wing aircraft',
+    rotors: 0,
+    size: 'full-scale rotorcraft',
+    weight: 'n/a (crewed)',
+    role: 'Medevac / police / news / military / utility — informational contact, not a threat',
     image: null,
   },
 };

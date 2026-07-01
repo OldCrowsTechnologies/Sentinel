@@ -31,6 +31,13 @@ DRONE_PROFILES = {
     # Potensic Atom 2 = sub-250 g micro; measured low ~330 Hz blade-pass comb
     # (field capture, kpitts 2026-06-29) -- distinctly lower than the others.
     "Potensic Atom 2": {"f0": (300, 380), "n_harm": 5, "rolloff": 0.60},
+    # Manned rotorcraft (helicopter) = crewed aircraft, NOT a UAS/threat. This is
+    # a PLACEHOLDER: real turbine-helo audio is dominated by transmission/turbine
+    # whine + a very-low, dense main-rotor comb (mostly below the 400 Hz high-pass).
+    # A simple rotor-comb can't capture that faithfully -- it only reserves the
+    # class so the pipeline is coherent. REPLACE with real captures before trusting
+    # (data/recordings/Manned rotorcraft/); the model should learn this from real audio.
+    "Manned rotorcraft": {"f0": (500, 900), "n_harm": 9, "rolloff": 0.85},
     # Unknown = drone-like comb but fundamental outside the known bands
     "Unknown":      {"f0": (450, 700),   "n_harm": 5, "rolloff": 0.65},
 }
