@@ -19,13 +19,23 @@ ground level, right on the ramp.
 - Label with the **airport code** (e.g., "KDFW ramp, gusty"). Different airports help a lot.
 - Folder: `data/recordings/None/airport/<AIRPORT_CODE>/`
 
-## 2) Helicopters  → a new "manned rotorcraft" class (not a threat)
+## 2) Aircraft & jets  → the loudest "must NOT trigger" negatives
+Fighter jets, airliners, and heavy aircraft are the hardest false-alarm sources — loud
+enough to *mask* a drone entirely — and we have almost none of this audio yet, so it's
+some of the highest-value data you can get. Teaches Sentinel "that roar is a jet, not a drone."
+- Capture: **jet passes/flyovers, takeoffs, afterburner, airliner overflights, prop planes.**
+- **Airshows are gold** — e.g., Blue Angels at Pensacola Beach. Record the jet passes and
+  note the aircraft type if you know it. (Passive/listen-only is fine under a show TFR — just
+  don't fly anything yourself.)
+- Folder: `data/recordings/None/aircraft/<type-or-event>/`  (e.g., `f18_pensacola/`)
+
+## 3) Helicopters  → a new "manned rotorcraft" class (not a threat)
 Teaches Sentinel to say "that's a crewed helo, not a drone" instead of false-alarming.
 - Capture variety: **spool-up/startup, hover, flybys at a few distances, shutdown.**
 - Tell us the **make/model** per clip (Robinson R44, Bell 206, MD 500, Airbus H125, …).
 - Folder: `data/recordings/Manned rotorcraft/<model>/`
 
-## 3) Drones  → the actual targets
+## 4) Drones  → the actual targets
 - **One make/model per clip**, and tell us exactly what it is (incl. homemade/FPV).
 - Vary it: hover at ~5/10/20 ft, forward passes at part- and full-throttle.
 - A little lead-in/out (powering up, landing) is useful.
