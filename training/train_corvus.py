@@ -61,6 +61,7 @@ def _label_from_path(path):
     """
     parts = [p.lower() for p in path.replace("\\", "/").split("/")]
     hay = " ".join(parts[-2:])
+    base = parts[-1]
     lab_idx = {lab.lower(): i for i, lab in enumerate(LABELS)}
 
     # 1) exact folder == canonical label (e.g. "Potensic Atom 2")
@@ -68,7 +69,15 @@ def _label_from_path(path):
         if parent in lab_idx:
             return lab_idx[parent]
 
-    # 2) keyword alias -> canonical label name -> current index
+    # 2) dataset filename codes, matched on the FILENAME ONLY and BEFORE the loose
+    # keyword aliases -- so a containing folder (e.g. ".../dronenoise/...") can't
+    # hijack them via a substring like "noise". Trailing "_" avoids the mic suffix.
+    codes = {"_3p_": "DJI Mini 3 Pro", "_fp_": "DJI FPV", "_m3_": "DJI Mavic 3", "_yn_": "Yuneec"}
+    for k, lab in codes.items():
+        if k in base and lab.lower() in lab_idx:
+            return lab_idx[lab.lower()]
+
+    # 3) keyword alias -> canonical label name -> current index
     alias = {
         "none": "None", "noise": "None", "background": "None", "negative": "None", "ambient": "None",
         "skydio": "Skydio X2", "x2": "Skydio X2",
@@ -105,8 +114,12 @@ def _load_wav_mono_16k(path):
     return data
 
 
-def load_real_dataset(data_dir, win_sec=CLIP_SEC):
-    """Walk data_dir, slice each file into win_sec windows, extract features."""
+def load_real_dataset(data_dir, win_sec=CLIP_SEC, holdout=None):
+    """Walk data_dir, slice each file into win_sec windows, extract features.
+
+    holdout: if set, files whose basename contains this substring are skipped
+    (used to keep a clean held-out real-flyover set out of training).
+    """
     paths = []
     for ext in ("wav", "WAV"):
         paths += glob.glob(os.path.join(data_dir, "**", f"*.{ext}"), recursive=True)
@@ -115,6 +128,8 @@ def load_real_dataset(data_dir, win_sec=CLIP_SEC):
     win = int(SR * win_sec)
     skipped = 0
     for p in paths:
+        if holdout and holdout.lower() in os.path.basename(p).lower():
+            continue
         li = _label_from_path(p)
         if li is None:
             skipped += 1
@@ -229,9 +244,11 @@ def export_model(clf, mean, scale, Xs, y, path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=None, help="folder of labeled real WAVs")
+    ap.add_argument("--data", nargs="*", default=[], help="folder(s) of labeled real WAVs")
     ap.add_argument("--per-class", type=int, default=400,
                     help="synthetic clips per class (0 = real only)")
+    ap.add_argument("--holdout", default=None, help="skip real files whose name contains this substring (held-out eval)")
+    ap.add_argument("--out", default=OUT_PATH, help="output model path")
     ap.add_argument("--seed", type=int, default=1337)
     args = ap.parse_args()
 
@@ -243,9 +260,9 @@ def main():
         waves += sw
         y = list(sy)
 
-    if args.data:
-        print(f"Loading real dataset from {args.data} ...")
-        rw, ry = load_real_dataset(args.data)
+    for dd in args.data:
+        print(f"Loading real dataset from {dd} ...")
+        rw, ry = load_real_dataset(dd, holdout=args.holdout)
         waves += rw
         y = list(y) + list(ry)
 
@@ -286,8 +303,8 @@ def main():
     print("labels:", names)
     print(confusion_matrix(yte, yp, labels=present))
 
-    size = export_model(clf, mean, scale, Xs, y, OUT_PATH)
-    print(f"\nExported model -> {os.path.normpath(OUT_PATH)} ({size/1024:.1f} KB)")
+    size = export_model(clf, mean, scale, Xs, y, args.out)
+    print(f"\nExported model -> {os.path.normpath(args.out)} ({size/1024:.1f} KB)")
     print("Feature dim:", FEATURE_DIM, "| Labels:", LABELS)
 
 

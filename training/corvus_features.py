@@ -49,7 +49,7 @@ HIGH_PASS_FC = 400.0  # Hz
 # (bursty) so median<<mean -> gain<1 (suppressed). This raises drone SNR in
 # crowds. FEATURE-PATH change -> lib/dsp.ts mirrors it and it's trained-in; keep
 # in lockstep (run_parity.sh). gain is clamped to <=1 (never amplifies).
-STATIONARITY_ENABLED = True
+STATIONARITY_ENABLED = os.environ.get("CORVUS_STATIONARITY", "1") != "0"  # A/B via env
 STATIONARITY_EPS = 1e-10
 STATIONARITY_MIN_FRAMES = 4  # need a few frames for a meaningful median
 # Suppression floor: gain is clamped to [FLOOR, 1]. 0 = full suppression (also
@@ -70,7 +70,11 @@ N_BAND_RATIOS = len(BAND_RATIOS)
 FEATURE_DIM = 2 * N_MELS + N_BAND_RATIOS
 
 # Class labels (index order is the model output order)
-LABELS = ["None", "Skydio X2", "DJI Phantom", "Parrot Anafi", "Potensic Atom 2", "Manned rotorcraft", "Unknown"]
+LABELS = [
+    "None", "Skydio X2", "DJI Phantom", "Parrot Anafi", "Potensic Atom 2",
+    "DJI Mini 3 Pro", "DJI Mini 5 Pro", "DJI FPV", "DJI Mavic 3", "Yuneec",
+    "Manned rotorcraft", "Unknown",
+]
 
 
 # ---------------------------------------------------------------------------

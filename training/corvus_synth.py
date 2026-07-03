@@ -134,6 +134,8 @@ def build_synthetic_dataset(per_class=400, seed=1337):
     rng = np.random.default_rng(seed)
     waves, labels = [], []
     for li, label in enumerate(LABELS):
+        if label != "None" and label not in DRONE_PROFILES:
+            continue  # real-data-only class (no synthetic profile) -- learned from field audio
         for _ in range(per_class):
             waves.append(make_clip(label, rng))
             labels.append(li)
