@@ -10,3 +10,4 @@ training/parity_cases.json
 training/__pycache__/
 *.pyc
 .DS_Store
+.claude/

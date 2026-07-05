@@ -19,6 +19,7 @@ import {
   PointAnnotation,
   ShapeSource,
   LineLayer,
+  FillLayer,
   setAccessToken,
   OfflineManager,
 } from '@maplibre/maplibre-react-native';
@@ -28,6 +29,7 @@ import { PrimaryButton } from './ui';
 import type { Threat } from '../lib/threatTracker';
 import { getRemoteIdContacts } from '../lib/remoteIdService';
 import type { GeoFix } from '../lib/locationService';
+import { ellipseToPolygon, type FusedTrack } from '../lib/meshFusion';
 
 setAccessToken(null); // MapLibre + OSM needs no token
 
@@ -69,17 +71,46 @@ function ring(lat: number, lon: number, radiusM: number, pts = 48): number[][] {
   return coords;
 }
 
+// Fused mesh tracks that actually have a fix → GeoJSON polygon FeatureCollection
+// for the uncertainty ellipse. Split by quality so styling stays static (no
+// data-driven expressions): solid red = good fix, dashed amber = weak geometry.
+function ellipseFC(tracks: FusedTrack[]) {
+  return {
+    type: 'FeatureCollection',
+    features: tracks.map((t, i) => ({
+      type: 'Feature',
+      id: `fx-${i}`,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [ellipseToPolygon(t).map((p) => [p.lon, p.lat])],
+      },
+      properties: {},
+    })),
+  };
+}
+
 export default function MapScreen({
   operator,
   threats,
+  fusedTracks = [],
 }: {
   operator: GeoFix | null;
   threats: Threat[];
+  fusedTracks?: FusedTrack[];
 }) {
   const [aoStatus, setAoStatus] = useState('');
   const rid = getRemoteIdContacts();
+
+  // Only tracks with a real fix get a pin + ellipse; the rest fall back to the
+  // acoustic range rings below (honest: no fix → no invented pin).
+  const fixTracks = fusedTracks.filter((t) => t.lat != null && t.lon != null && t.ellipse);
+  const okFC = ellipseFC(fixTracks.filter((t) => t.fixQuality === 'ok'));
+  const weakFC = ellipseFC(fixTracks.filter((t) => t.fixQuality === 'weak'));
+
   const center: [number, number] = operator
     ? [operator.lon, operator.lat]
+    : fixTracks[0]
+    ? [fixTracks[0].lon as number, fixTracks[0].lat as number]
     : rid.find((r) => r.droneLon != null)
     ? [rid[0].droneLon as number, rid[0].droneLat as number]
     : [-98.5795, 39.8283]; // CONUS fallback
@@ -145,6 +176,33 @@ export default function MapScreen({
           </ShapeSource>
         )}
 
+        {/* Fused mesh fixes: uncertainty ellipse (region, never a bare pin). */}
+        {weakFC.features.length > 0 && (
+          <ShapeSource id="fusedWeak" shape={weakFC as any}>
+            <FillLayer id="fusedWeakFill" style={{ fillColor: COLORS.warning, fillOpacity: 0.1 }} />
+            <LineLayer
+              id="fusedWeakLine"
+              style={{ lineColor: COLORS.warning, lineWidth: 1.5, lineOpacity: 0.8, lineDasharray: [3, 2] }}
+            />
+          </ShapeSource>
+        )}
+        {okFC.features.length > 0 && (
+          <ShapeSource id="fusedOk" shape={okFC as any}>
+            <FillLayer id="fusedOkFill" style={{ fillColor: COLORS.danger, fillOpacity: 0.14 }} />
+            <LineLayer id="fusedOkLine" style={{ lineColor: COLORS.danger, lineWidth: 2, lineOpacity: 0.9 }} />
+          </ShapeSource>
+        )}
+        {fixTracks.map((t, i) => (
+          <PointAnnotation key={`fx-${i}`} id={`fx-${i}`} coordinate={[t.lon as number, t.lat as number]}>
+            <View
+              style={[
+                s.diamond,
+                { backgroundColor: t.fixQuality === 'weak' ? COLORS.warning : COLORS.danger, borderColor: '#fff' },
+              ]}
+            />
+          </PointAnnotation>
+        ))}
+
         {rid.map((c) =>
           c.droneLat != null && c.droneLon != null ? (
             <PointAnnotation key={`d-${c.id}`} id={`d-${c.id}`} coordinate={[c.droneLon, c.droneLat]}>
@@ -167,8 +225,13 @@ export default function MapScreen({
           <Text style={s.title}>TACTICAL MAP</Text>
         </View>
         <Text style={s.legendText}>
-          ● OPERATOR   ◐ ACOUSTIC RANGE RING   ● RID DRONE   ■ RID PILOT
+          ● OPERATOR   ◐ ACOUSTIC RANGE RING   ◆ FUSED FIX (MESH)   ● RID DRONE   ■ RID PILOT
         </Text>
+        {fixTracks.length > 0 && (
+          <Text style={s.fused}>
+            {fixTracks.length} MESH FIX{fixTracks.length > 1 ? 'ES' : ''} — ELLIPSE = UNCERTAINTY (NOT A POINT).
+          </Text>
+        )}
         {!operator && <Text style={s.warn}>NO GPS FIX — ACOUSTIC RINGS NEED YOUR POSITION.</Text>}
         {aoStatus ? <Text style={s.ao}>{aoStatus}</Text> : null}
       </View>
@@ -190,6 +253,7 @@ const s = StyleSheet.create({
   map: { flex: 1 },
   dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
   square: { width: 14, height: 14, borderWidth: 2 },
+  diamond: { width: 14, height: 14, borderWidth: 2, transform: [{ rotate: '45deg' }] },
   legend: {
     position: 'absolute',
     top: 50,
@@ -205,6 +269,7 @@ const s = StyleSheet.create({
   title: { fontFamily: FONTS.displayBold, color: COLORS.ink, fontSize: 13, letterSpacing: 1.5 },
   legendText: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 11, letterSpacing: 0.5 },
   warn: { fontFamily: FONTS.body, color: COLORS.warning, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
+  fused: { fontFamily: FONTS.body, color: COLORS.danger, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
   ao: { fontFamily: FONTS.body, color: COLORS.teal, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
   controls: { position: 'absolute', bottom: 14, left: 12, right: 12, flexDirection: 'row' },
 });

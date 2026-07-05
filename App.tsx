@@ -5,6 +5,7 @@ import { Rajdhani_500Medium, Rajdhani_600SemiBold, Rajdhani_700Bold } from '@exp
 import { JetBrainsMono_400Regular, JetBrainsMono_500Medium, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 
 import LaunchScreen from './app/LaunchScreen';
+import VipGateScreen from './app/VipGateScreen';
 import SentinelScreen from './app/SentinelScreen';
 import SettingsScreen, { SettingsState } from './app/SettingsScreen';
 import DetectionsScreen from './app/DetectionsScreen';
@@ -19,7 +20,10 @@ import { COLORS } from './lib/theme';
 
 import AudioCaptureService from './lib/audioCapture';
 import DroneClassifier, { CorvusModel } from './lib/mlClassifier';
-import ThreatTracker, { Threat, AlertEvent } from './lib/threatTracker';
+import ThreatTracker, { Threat, AlertEvent, Detection } from './lib/threatTracker';
+import { reportFromDetection, type ContactReport } from './lib/meshTypes';
+import { startMesh, stopMesh, broadcastReport } from './lib/meshTransport';
+import { fuseReports, type FusedTrack } from './lib/meshFusion';
 import CorvusVoice from './lib/corvusVoice';
 import { writeReport } from './lib/reportGenerator';
 import { initNotifications, notifyIntercept } from './lib/notifications';
@@ -47,6 +51,7 @@ export default function App() {
   });
 
   const [showLaunch, setShowLaunch] = useState(true);
+  const [authed, setAuthed] = useState(false);
   const [tab, setTab] = useState<TabKey>('monitor');
   const [sub, setSub] = useState<SubScreen>(null);
   const [isMonitoring, setMonitoring] = useState(false);
@@ -55,6 +60,7 @@ export default function App() {
   const [level, setLevel] = useState(0);
   const [peakLevel, setPeakLevel] = useState(0);
   const [threats, setThreats] = useState<Threat[]>([]);
+  const [fusedTracks, setFusedTracks] = useState<FusedTrack[]>([]);
   const [selectedThreat, setSelectedThreat] = useState<Threat | null>(null);
   const [lastAlert, setLastAlert] = useState<AlertEvent | null>(null);
   const [settings, setSettings] = useState<SettingsState>({
@@ -72,6 +78,29 @@ export default function App() {
   const latestWindowRef = useRef<Float32Array | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+
+  // --- Phase 3 mesh: rolling window of contact reports (this node + peers) that
+  // fuseReports() localizes. Single-phone stays empty of peers, so fusion yields
+  // no fix and the map shows range rings (today's behavior); add ≥3 positioned
+  // nodes and ellipses appear. Node id is per-launch until persistence lands.
+  const nodeIdRef = useRef<string>('');
+  if (!nodeIdRef.current) nodeIdRef.current = 'self-' + Date.now().toString(36);
+  const seqRef = useRef(0);
+  const reportsRef = useRef<ContactReport[]>([]);
+
+  const MESH_WINDOW_MS = 60000;
+  const ingestReport = useCallback((rep: ContactReport) => {
+    const cutoff = Date.now() - MESH_WINDOW_MS;
+    reportsRef.current = [...reportsRef.current, rep].filter((r) => r.t >= cutoff);
+    setFusedTracks(fuseReports(reportsRef.current));
+  }, []);
+
+  // Register the mesh receive sink (inert while the transport is slaved off, but
+  // wired so peer reports flow into fusion the moment a native transport lands).
+  useEffect(() => {
+    startMesh((rep) => ingestReport(rep));
+    return () => stopMesh();
+  }, [ingestReport]);
 
   const [specimenCount, setSpecimenCount] = useState(0);
 
@@ -140,7 +169,7 @@ export default function App() {
     const label = rms < SILENCE_RMS ? 'None' : result.label;
     const fix = getLastFix();
 
-    const alerts = tracker.update({
+    const det: Detection = {
       label,
       confidence: result.confidence,
       distance: result.distance,
@@ -154,9 +183,19 @@ export default function App() {
       sizeClass: result.openSet.sizeClass,
       oodScore: result.openSet.oodScore,
       voicePresent: result.voicePresent,
-    });
+    };
+
+    const alerts = tracker.update(det);
 
     setThreats(tracker.getActiveThreats());
+
+    // Publish real contacts to the mesh (broadcast is inert until a native
+    // transport lands) and fold this node's own report into fusion.
+    if (label !== 'None') {
+      const rep = reportFromDetection(det, nodeIdRef.current, seqRef.current++);
+      broadcastReport(rep);
+      ingestReport(rep);
+    }
 
     const droneHit = label !== 'None' && result.droneDetected;
     if (droneHit || result.voicePresent) {
@@ -194,7 +233,7 @@ export default function App() {
         );
       }
     }
-  }, [captureSpecimen]);
+  }, [captureSpecimen, ingestReport]);
 
   const toggle = async () => {
     const audio = audioRef.current;
@@ -294,7 +333,7 @@ export default function App() {
           />
         </ScreenBG>
       );
-    if (tab === 'map') return <MapScreen operator={getLastFix()} threats={threats} />;
+    if (tab === 'map') return <MapScreen operator={getLastFix()} threats={threats} fusedTracks={fusedTracks} />;
     if (tab === 'rf')
       return (
         <ScreenBG>
@@ -327,12 +366,13 @@ export default function App() {
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <StatusBar barStyle="light-content" />
       <View style={{ flex: 1 }}>{renderMain()}</View>
-      {!showLaunch && <TabBar active={tab} onChange={changeTab} />}
+      {!showLaunch && authed && <TabBar active={tab} onChange={changeTab} />}
 
       {selectedThreat && (
         <ContactDetailScreen threat={selectedThreat} onClose={() => setSelectedThreat(null)} onRecord={captureSpecimen} />
       )}
       {showLaunch && <LaunchScreen onEnter={() => setShowLaunch(false)} />}
+      {!showLaunch && !authed && <VipGateScreen onUnlock={() => setAuthed(true)} />}
     </View>
   );
 }
