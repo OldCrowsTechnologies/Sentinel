@@ -18,9 +18,15 @@ import {
   SectionLabel,
   Pill,
   PrimaryButton,
+  GhostButton,
   EmptyState,
 } from './ui';
-import { getRfModuleStatus } from '../lib/rfSensorService';
+import {
+  getRfModuleStatus,
+  startLinkScan,
+  stopLinkScan,
+  type RfLinkDetection,
+} from '../lib/rfSensorService';
 import {
   startRemoteIdScan,
   stopRemoteIdScan,
@@ -64,6 +70,8 @@ export default function RemoteIdScreen() {
   const [contacts, setContacts] = useState<RemoteIdContact[]>([]);
   const [scanning, setScanning] = useState(false);
   const [status, setStatus] = useState('Idle. Press SCAN to listen for Remote ID.');
+  const [links, setLinks] = useState<RfLinkDetection[]>([]);
+  const [rfScanning, setRfScanning] = useState(false);
 
   const rf = getRfModuleStatus();
   const fft = fftPoints();
@@ -74,7 +82,24 @@ export default function RemoteIdScreen() {
     setStatus('Stopped.');
   }, []);
 
-  useEffect(() => () => stopRemoteIdScan(), []);
+  useEffect(
+    () => () => {
+      stopRemoteIdScan();
+      stopLinkScan();
+    },
+    []
+  );
+
+  const toggleRf = async () => {
+    if (rfScanning) {
+      stopLinkScan();
+      setRfScanning(false);
+      return;
+    }
+    setLinks([]);
+    const ok = await startLinkScan((d) => setLinks((prev) => [d, ...prev].slice(0, 50)));
+    setRfScanning(ok);
+  };
 
   const toggle = async () => {
     if (scanning) {
@@ -122,25 +147,31 @@ export default function RemoteIdScreen() {
 
         <Text style={s.status}>{status}</Text>
 
-        {/* ---- SPECTRUM ---- */}
-        <SectionLabel>SPECTRUM · 2.40–2.48 GHz</SectionLabel>
+        {/* ---- SDR CONTROL-LINK DETECTION (Nooelec NESDR / RTL-SDR) ---- */}
+        <SectionLabel>CONTROL LINKS · SDR (SUB-GHZ)</SectionLabel>
 
         {rf.present ? (
           <>
+            <View style={s.bandRow}>
+              {['433', '868', '915'].map((b) => (
+                <View key={b} style={s.bandChip}>
+                  <Text style={s.bandChipText}>{b} MHz</Text>
+                </View>
+              ))}
+              <View style={[s.bandChip, s.bandChipOff]}>
+                <Text style={[s.bandChipText, { color: COLORS.faint }]}>2.4 GHz · out of range</Text>
+              </View>
+            </View>
+
             <Panel style={s.specPanel}>
               <Svg width="100%" height={FFT_H} viewBox={`0 0 ${FFT_W} ${FFT_H}`}>
-                {/* faint baseline grid */}
                 <Line x1={0} y1={FFT_H - 4} x2={FFT_W} y2={FFT_H - 4} stroke={COLORS.divider} strokeWidth={1} />
                 <Line x1={0} y1={FFT_H / 2} x2={FFT_W} y2={FFT_H / 2} stroke={COLORS.divider} strokeWidth={0.5} />
-                {/* fill under trace */}
                 <Polygon points={fft.fill} fill={COLORS.teal} fillOpacity={0.12} />
-                {/* spectrum trace */}
                 <Polyline points={fft.line} fill="none" stroke={COLORS.teal} strokeWidth={1.5} />
-                {/* peak marker */}
                 <Circle cx={fft.peak.x} cy={fft.peak.y} r={3} fill={COLORS.gold} />
               </Svg>
             </Panel>
-
             <View style={s.waterfall}>
               {WATERFALL_ROWS.map((row, ri) => (
                 <View key={ri} style={s.wfRow}>
@@ -150,15 +181,49 @@ export default function RemoteIdScreen() {
                 </View>
               ))}
             </View>
-            <Text style={s.specCaption}>
-              SDR FFT + waterfall — illustrative. Peak marked at the active control band.
-            </Text>
+            <Text style={s.specCaption}>Spectrum illustrative; detections below are live dechirp results.</Text>
+
+            <View style={{ marginTop: 10 }}>
+              <GhostButton
+                label={rfScanning ? 'STOP CONTROL-LINK SCAN' : 'SCAN CONTROL LINKS'}
+                icon={rfScanning ? 'stop' : 'radar'}
+                color={rfScanning ? COLORS.danger : COLORS.teal}
+                onPress={toggleRf}
+              />
+            </View>
+
+            {links.length > 0 ? (
+              links.map((d, i) => (
+                <View key={i} style={s.linkItem}>
+                  <View style={s.row}>
+                    <Text style={s.uas}>
+                      {d.kind.toUpperCase()} · {d.band}
+                    </Text>
+                    <Text style={s.rssi}>{d.rssi} dBm</Text>
+                  </View>
+                  <View style={s.kvRow}>
+                    <Text style={s.kvKey}>DETECTION STRENGTH</Text>
+                    <Text style={s.kvVal}>{d.score}</Text>
+                  </View>
+                  <View style={s.kvRow}>
+                    <Text style={s.kvKey}>TIME</Text>
+                    <Text style={s.kvVal}>{new Date(d.timestamp).toLocaleTimeString()}</Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={s.specCaption}>
+                {rfScanning
+                  ? 'Scanning 433 / 868 / 915 MHz for LoRa / control-link chirps…'
+                  : 'Press SCAN CONTROL LINKS to sniff sub-GHz control links.'}
+              </Text>
+            )}
           </>
         ) : (
           <Panel style={s.offPanel}>
             <MaterialCommunityIcons name="access-point-network-off" size={34} color={COLORS.faint} />
             <Text style={s.offText}>
-              SDR module not connected — Bluetooth Remote ID only. {rf.note}
+              SDR not connected — Bluetooth Remote ID only. {rf.note}
             </Text>
           </Panel>
         )}
@@ -224,6 +289,11 @@ const s = StyleSheet.create({
   wfRow: { flexDirection: 'row', height: 9 },
   wfCell: { flex: 1, opacity: 0.85 },
   specCaption: { fontFamily: FONTS.body, color: COLORS.faint, fontSize: 10.5, marginTop: 6 },
+  bandRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, marginBottom: 4 },
+  bandChip: { borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.tealDark, borderRadius: RADII.pill, paddingHorizontal: 10, paddingVertical: 4 },
+  bandChipOff: { borderColor: COLORS.panelBorder },
+  bandChipText: { fontFamily: FONTS.mono, color: COLORS.teal, fontSize: 10.5 },
+  linkItem: { backgroundColor: COLORS.panel, borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.panelBorder, borderLeftWidth: 3, borderLeftColor: COLORS.gold, borderRadius: RADII.md, padding: 12, marginTop: 8 },
 
   offPanel: { padding: 18, alignItems: 'center', flexDirection: 'row', gap: 12 },
   offText: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 12, lineHeight: 17, flex: 1 },
