@@ -1,31 +1,30 @@
 /**
- * rfSensorService.ts -- Tier-3 external RF sensor (SDR) scaffold for LoRa /
- * ExpressLRS and other control-link detection.
+ * rfSensorService.ts -- Tier-3 external RF sensor for LoRa / ExpressLRS and other
+ * sub-GHz control-link detection, via a Nooelec NESDR Nano 3 (RTL-SDR) on USB-C.
  *
- * SLAVED OFF until the Corvus RF module exists. The phone's own radios cannot
- * tune sub-GHz LoRa or decode proprietary control links (see docs/PHASE2-RF.md),
- * so this requires an external SDR (RTL-SDR / HackRF) or LoRa transceiver over
- * USB-OTG. This module is the integration seam: today it reports "no module"
- * and the feature is disabled in Settings. When hardware arrives, implement
- * `connectModule` (USB enumeration) and `startLinkScan` (chirp/RSSI detection)
- * here -- the rest of the app already routes through this interface.
+ * The signal processing is done + unit-tested (loraDetect.ts). The SDR is driven
+ * over the rtl_tcp protocol (rtlTcp.ts) so the only native dependency is a TCP
+ * socket + a companion RTL2832U USB driver app that exposes the dongle as a local
+ * rtl_tcp server. That native socket is injected here via `registerRtlTransport`;
+ * until a transport is registered the feature reports "no module" and stays inert
+ * (nothing transmits -- receive only).
  *
- * Nothing here transmits or activates an antenna; it is inert by design.
- *
- * The SIGNAL PROCESSING is already built and unit-tested (loraDetect.ts): given
- * IQ baseband, processIqFrame() decides whether a LoRa chirp is present. The
- * only remaining (hardware-gated) piece is the native USB driver that pulls IQ
- * off the SDR and calls processIqFrame() -- that's the seam.
+ * Flow: connectModule() opens rtl_tcp -> startLinkScan() duty-cycles the sub-GHz
+ * bands, capturing IQ snapshots and running processIqFrame() -> detections emit
+ * to the registered sink. 2.4 GHz (ELRS 2.4 / DJI OcuSync) is OUT of RTL-SDR
+ * range and is intentionally not scanned.
  */
 
 import { detectLora } from './loraDetect';
+import { RtlTcpClient, RF_SCAN_BANDS, type RtlSocket } from './rtlTcp';
 
 export type RfBand = '433MHz' | '868MHz' | '915MHz' | '2.4GHz';
 
 export interface RfLinkDetection {
   kind: 'lora' | 'elrs' | 'ocusync' | 'unknown';
   band: RfBand;
-  rssi: number; // dBm
+  rssi: number; // dBm (uncalibrated)
+  score: number; // dechirp peak-to-average (detection strength)
   bearing?: number; // only with a directional antenna
   timestamp: number;
 }
@@ -36,54 +35,104 @@ export interface RfModuleStatus {
   note: string;
 }
 
-// Hard gate: external RF is disabled until the module is integrated. Flip this
-// (and implement the methods below) once a Corvus RF module is connected.
-const RF_MODULE_AVAILABLE = false;
-
-export function getRfModuleStatus(): RfModuleStatus {
-  return {
-    present: false,
-    name: null,
-    note: 'No Corvus RF module connected. External SDR (LoRa / control-link) is disabled.',
-  };
+// ---- native transport injection ------------------------------------------
+// The native side (react-native-tcp-socket, after prebuild) registers this. It
+// connects to the local rtl_tcp server and pumps received bytes into `onData`.
+export interface RtlTransport {
+  connect(host: string, port: number, onData: (chunk: Uint8Array) => void): Promise<RtlSocket>;
 }
 
-/** Returns false while slaved off — the exterior antenna stays inert. */
-export async function connectModule(): Promise<boolean> {
-  if (!RF_MODULE_AVAILABLE) return false;
-  // TODO(hardware): enumerate USB-OTG SDR, init driver, tune to the AO bands.
-  return false;
+let transport: RtlTransport | null = null;
+export function registerRtlTransport(t: RtlTransport | null): void {
+  transport = t;
 }
 
+const RTL_HOST = '127.0.0.1';
+const RTL_PORT = 1234;
+const SAMPLE_RATE = 1_024_000; // Hz -- covers up to 500 kHz LoRa BW
+const FRAME_SAMPLES = 32768; // ~32 ms snapshot per band
+
+let client: RtlTcpClient | null = null;
+let connected = false;
+let scanning = false;
 let onDetect: ((d: RfLinkDetection) => void) | null = null;
 
+export function getRfModuleStatus(): RfModuleStatus {
+  if (!transport) {
+    return {
+      present: false,
+      name: null,
+      note: 'No RTL-SDR transport. Install the RTL2832U USB driver app and use a dev build to enable sub-GHz RF.',
+    };
+  }
+  return connected
+    ? { present: true, name: 'Nooelec NESDR Nano 3 (RTL-SDR)', note: 'RTL-SDR connected. Scanning sub-GHz control links.' }
+    : { present: true, name: 'Nooelec NESDR Nano 3 (RTL-SDR)', note: 'RTL-SDR transport ready. Press connect to start.' };
+}
+
+/** Open the rtl_tcp connection and configure the tuner. */
+export async function connectModule(): Promise<boolean> {
+  if (!transport) return false;
+  if (connected) return true;
+  try {
+    const sock = await transport.connect(RTL_HOST, RTL_PORT, (chunk) => client?.receive(chunk));
+    client = new RtlTcpClient(sock);
+    client.configure({ sampleRate: SAMPLE_RATE, gainTenthDb: 'auto' });
+    connected = true;
+    return true;
+  } catch {
+    client = null;
+    connected = false;
+    return false;
+  }
+}
+
+export function disconnectModule(): void {
+  scanning = false;
+  client?.close();
+  client = null;
+  connected = false;
+}
+
 /**
- * Begin scanning for control links (LoRa/ELRS chirp + RSSI). Registers the
- * detection sink; returns false while slaved off (no module feeds IQ yet), but
- * the processing pipeline below is live and ready.
+ * Begin duty-cycled scanning across the sub-GHz control-link bands. Registers the
+ * detection sink; returns false if no module/transport is connected.
  */
-export async function startLinkScan(
-  cb: (d: RfLinkDetection) => void
-): Promise<boolean> {
+export async function startLinkScan(cb: (d: RfLinkDetection) => void): Promise<boolean> {
   onDetect = cb;
-  if (!RF_MODULE_AVAILABLE) return false;
-  // TODO(hardware): open the USB SDR, tune to `band`, and stream IQ frames into
-  // processIqFrame() below. The detection math is already done.
-  return false;
+  if (!transport) return false;
+  if (!connected && !(await connectModule())) return false;
+  if (scanning) return true;
+  scanning = true;
+  void scanLoop();
+  return true;
 }
 
 export function stopLinkScan(): void {
+  scanning = false;
   onDetect = null;
 }
 
+async function scanLoop(): Promise<void> {
+  while (scanning && client) {
+    for (const { band, centerHz } of RF_SCAN_BANDS) {
+      if (!scanning || !client) break;
+      try {
+        client.tune(centerHz);
+        const { i, q } = await client.capture(FRAME_SAMPLES);
+        processIqFrame(i, q, SAMPLE_RATE, band);
+      } catch {
+        // capture timeout / transport hiccup -- skip this band, keep scanning
+      }
+    }
+    await new Promise((r) => setTimeout(r, 150)); // gentle duty cycle (thermal/CPU)
+  }
+}
+
 /**
- * Process one IQ baseband frame from the SDR and emit a detection if a LoRa
- * chirp is present. THIS is where the native USB driver will push samples; it
- * is fully implemented + unit-tested and works the moment real IQ arrives.
- *
- * @param iqI/iqQ complex baseband samples
- * @param sampleRate SDR sample rate (Hz)
- * @param band the band the SDR is currently tuned to
+ * Process one IQ baseband frame and emit a detection if a LoRa-style chirp is
+ * present. Fully implemented + unit-tested (loraDetect); called by scanLoop with
+ * real IQ, and directly by tests.
  */
 export function processIqFrame(
   iqI: ArrayLike<number>,
@@ -97,6 +146,7 @@ export function processIqFrame(
     kind: 'lora',
     band,
     rssi: Math.round(d.rssiDb),
+    score: Math.round(d.score),
     timestamp: Date.now(),
   };
   onDetect?.(det);
