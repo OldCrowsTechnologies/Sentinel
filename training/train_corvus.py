@@ -161,19 +161,34 @@ def featurize(waves):
     return X
 
 
-def build_open_set(Xs, y):
-    """Per-class statistics in STANDARDIZED feature space, used on-device for
-    open-set recognition: deciding a contact is a drone but NOT in our library
-    (-> "possible homemade / unknown build"). For each class we export the
-    centroid + diagonal variance; the device computes a variance-normalized
-    distance to each known *specific* drone class and flags novelty when the
-    nearest known class is too far (or the match probability too low).
+# Taxonomy grouping (by NAME so it's robust to index/label changes). See
+# docs/TAXONOMY.md. NON-THREAT = called out but never alarmed on. CATEGORY = an
+# acoustic drone TYPE (reported when no specific model matches). Everything else
+# non-None/non-Unknown is a specific MODEL leaf (brand ID, best-effort by ear).
+NON_THREAT_LABELS = {"None", "Bird", "Manned rotorcraft", "Manned fixed-wing"}
+CATEGORY_LABELS = {"Small multirotor", "Medium multirotor", "Large multirotor",
+                   "FPV racer", "Fixed-wing UAS", "Combustion UAS"}
+
+
+def build_open_set(Xs, y, active_labels):
+    """Per-class stats (STANDARDIZED space) + taxonomy grouping for the on-device
+    open-set recognizer. `y` indexes `active_labels` (the classes actually
+    present after remap), so classStats length == MLP output count == labels.
+
+    Grouping the device uses:
+      * nonThreatIndices  -> droneness = 1 - sum(P over these); these are CALLED
+                             OUT positively (Bird / Helicopter / Jet / None),
+                             never alarmed on. (Fixes the old 1 - P(None) that
+                             would treat a jet as a drone.)
+      * threatIndices     -> any UAS (categories + models + Unknown).
+      * categoryIndices   -> acoustic TYPE fallback when no specific model matches.
+      * specificDroneIndices -> specific MODEL leaves for brand matching / OOD.
     """
     stats = []
-    for c in range(len(LABELS)):
+    for c, label in enumerate(active_labels):
         mask = y == c
         if not np.any(mask):
-            stats.append({"label": LABELS[c], "count": 0,
+            stats.append({"label": label, "count": 0,
                           "centroid": [0.0] * FEATURE_DIM,
                           "variance": [1.0] * FEATURE_DIM})
             continue
@@ -182,31 +197,45 @@ def build_open_set(Xs, y):
         # floor the variance so a near-constant feature can't dominate the metric
         variance = np.maximum(Xc.var(axis=0), 1e-2)
         stats.append({
-            "label": LABELS[c],
+            "label": label,
             "count": int(mask.sum()),
             "centroid": [float(v) for v in centroid],
             "variance": [float(v) for v in variance],
         })
 
-    none_idx = LABELS.index("None") if "None" in LABELS else -1
-    unknown_idx = LABELS.index("Unknown") if "Unknown" in LABELS else -1
-    specific = [i for i in range(len(LABELS)) if i not in (none_idx, unknown_idx)]
+    def idx(name):
+        return active_labels.index(name) if name in active_labels else -1
+
+    non_threat = [i for i, l in enumerate(active_labels) if l in NON_THREAT_LABELS]
+    categories = [i for i, l in enumerate(active_labels) if l in CATEGORY_LABELS]
+    threat = [i for i, l in enumerate(active_labels) if l not in NON_THREAT_LABELS]
+    specific = [i for i, l in enumerate(active_labels)
+                if l not in NON_THREAT_LABELS and l not in CATEGORY_LABELS and l != "Unknown"]
 
     return {
         "classStats": stats,
-        "noneIndex": none_idx,
-        "unknownIndex": unknown_idx,
+        "noneIndex": idx("None"),
+        "unknownIndex": idx("Unknown"),
+        "nonThreatIndices": non_threat,
+        "threatIndices": threat,
+        "categoryIndices": categories,
         "specificDroneIndices": specific,
         # Provisional thresholds (tune on real audio):
-        #   droneGate     : 1 - P(None) above this => a drone is present
-        #   matchProb     : best specific-class prob below this => not a confident match
-        #   oodDistance   : nearest-known normalized distance above this => out-of-distribution
+        #   droneGate   : droneness (1 - sum P[nonThreat]) above this => a UAS is present
+        #   matchProb   : best specific-model prob below this => not a confident brand match
+        #   oodDistance : nearest-known normalized distance above this => out-of-distribution
         "thresholds": {"droneGate": 0.5, "matchProb": 0.6, "oodDistance": 2.5},
     }
 
 
-def export_model(clf, mean, scale, Xs, y, path):
-    """Serialize standardizer + MLP + DSP config + open-set stats to one JSON."""
+def export_model(clf, mean, scale, Xs, y, active_labels, path):
+    """Serialize standardizer + MLP + DSP config + open-set stats to one JSON.
+
+    `active_labels` are the classes actually present (post-remap), so the label
+    list length matches the MLP's softmax output count. `y` indexes them."""
+    if getattr(clf, "out_activation_", "softmax") != "softmax":
+        raise SystemExit("Output layer is not softmax (only 2 classes present?) "
+                         "-- add data / keep synthetic backfill for >= 3 classes.")
     layers = []
     n_layers = len(clf.coefs_)
     for i, (W, b) in enumerate(zip(clf.coefs_, clf.intercepts_)):
@@ -217,9 +246,9 @@ def export_model(clf, mean, scale, Xs, y, path):
         })
 
     model = {
-        "version": 2,
+        "version": 3,
         "format": "corvus-mlp-json",
-        "labels": LABELS,
+        "labels": active_labels,
         "dsp": {
             "sampleRate": SR,
             "nfft": NFFT,
@@ -234,7 +263,7 @@ def export_model(clf, mean, scale, Xs, y, path):
         "featureDim": FEATURE_DIM,
         "scaler": {"mean": [float(v) for v in mean], "scale": [float(v) for v in scale]},
         "mlp": {"layers": layers},
-        "openSet": build_open_set(Xs, y),
+        "openSet": build_open_set(Xs, y, active_labels),
     }
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
@@ -270,7 +299,18 @@ def main():
     if len(waves) == 0:
         raise SystemExit("No data. Provide --data or set --per-class > 0.")
 
-    print(f"Total clips: {len(waves)} | classes present: {sorted(set(y.tolist()))}")
+    # Remap to ONLY the classes actually present, preserving canonical LABELS
+    # order. This keeps the MLP softmax output count == len(active_labels) ==
+    # len(classStats); labels with no data (e.g. real-only leaves without
+    # recordings) are simply omitted from this model instead of desyncing it.
+    present = sorted(set(int(v) for v in y.tolist()))
+    active_labels = [LABELS[i] for i in present]
+    remap = {old: new for new, old in enumerate(present)}
+    y = np.array([remap[int(v)] for v in y.tolist()])
+    excluded = [LABELS[i] for i in range(len(LABELS)) if i not in present]
+    print(f"Total clips: {len(waves)} | active classes ({len(active_labels)}): {active_labels}")
+    if excluded:
+        print(f"Excluded (no data): {excluded}")
     print("Extracting features...")
     X = featurize(waves)
 
@@ -296,16 +336,15 @@ def main():
     acc = clf.score(Xte, yte)
     print(f"\n=== Held-out accuracy: {acc*100:.1f}% ===\n")
     yp = clf.predict(Xte)
-    present = sorted(set(y.tolist()))
-    names = [LABELS[i] for i in present]
-    print(classification_report(yte, yp, labels=present, target_names=names, zero_division=0))
+    idxs = list(range(len(active_labels)))
+    print(classification_report(yte, yp, labels=idxs, target_names=active_labels, zero_division=0))
     print("Confusion matrix (rows=true, cols=pred):")
-    print("labels:", names)
-    print(confusion_matrix(yte, yp, labels=present))
+    print("labels:", active_labels)
+    print(confusion_matrix(yte, yp, labels=idxs))
 
-    size = export_model(clf, mean, scale, Xs, y, args.out)
+    size = export_model(clf, mean, scale, Xs, y, active_labels, args.out)
     print(f"\nExported model -> {os.path.normpath(args.out)} ({size/1024:.1f} KB)")
-    print("Feature dim:", FEATURE_DIM, "| Labels:", LABELS)
+    print("Feature dim:", FEATURE_DIM, "| Labels:", active_labels)
 
 
 if __name__ == "__main__":

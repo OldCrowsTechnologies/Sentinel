@@ -25,6 +25,14 @@ N_SAMPLES = int(SR * CLIP_SEC)
 # Per-platform fundamental (blade-pass) frequency ranges, in Hz.
 # Values from corvus-sentinel-project.md acoustic profiles.
 DRONE_PROFILES = {
+    # --- Acoustic size categories (fallback when brand isn't ear-separable) ---
+    # Small props spin fast -> high blade-pass; big props slow -> low.
+    "Small multirotor":  {"f0": (1400, 2200), "n_harm": 5, "rolloff": 0.60},
+    "Medium multirotor": {"f0": (800, 1400),  "n_harm": 5, "rolloff": 0.65},
+    "Large multirotor":  {"f0": (300, 650),   "n_harm": 6, "rolloff": 0.72},
+    # FPV racers: small 5-6" props at very high RPM + aggressive throttle.
+    "FPV racer":         {"f0": (1600, 3200), "n_harm": 6, "rolloff": 0.55},
+    # --- Flagship specific models ---
     "Skydio X2":    {"f0": (800, 1400),  "n_harm": 5, "rolloff": 0.65},
     "DJI Phantom":  {"f0": (1200, 1800), "n_harm": 4, "rolloff": 0.70},
     "Parrot Anafi": {"f0": (920, 1200),  "n_harm": 4, "rolloff": 0.60},
@@ -107,13 +115,103 @@ def _negative(rng):
     return sig
 
 
+# ---------------------------------------------------------------------------
+# Non-rotor signature generators (the full-taxonomy classes). Bootstrap only --
+# real captures replace these. Each returns CLIP_SEC of mono float at SR.
+# ---------------------------------------------------------------------------
+def _bird(rng):
+    """Bird/biological: short tonal chirps & sweeps, mid-high band, bursty
+    (non-stationary -> the stationarity gate should knock this DOWN, teaching the
+    model 'a chirp is not a rotor')."""
+    sig = np.zeros(N_SAMPLES)
+    for _ in range(int(rng.integers(2, 6))):
+        f0 = rng.uniform(1800, 5500)
+        dur = rng.uniform(0.05, 0.25)
+        start = rng.uniform(0, max(1e-3, CLIP_SEC - dur))
+        i0 = int(start * SR)
+        i1 = min(N_SAMPLES, i0 + int(dur * SR))
+        m = i1 - i0
+        if m < 2:
+            continue
+        tt = np.arange(m) / SR
+        sweep = f0 * (1.0 + rng.uniform(-0.3, 0.3) * (tt / max(dur, 1e-3)))
+        phase = 2 * np.pi * np.cumsum(sweep) / SR
+        sig[i0:i1] += rng.uniform(0.5, 1.0) * np.hanning(m) * np.sin(phase)
+    sig += 0.05 * _pink_noise(N_SAMPLES, rng)
+    return sig
+
+
+def _prop(rng):
+    """Fixed-wing UAS: single steady prop -- low fundamental, clean harmonic
+    stack, little of the 4-rotor beating a multirotor has, plus airflow hiss."""
+    t = np.arange(N_SAMPLES) / SR
+    f0 = rng.uniform(150, 600)
+    drift = 1.0 + 0.01 * np.sin(2 * np.pi * rng.uniform(0.1, 0.4) * t)
+    phase = 2 * np.pi * np.cumsum(f0 * drift) / SR
+    sig = np.zeros(N_SAMPLES)
+    for h in range(1, 7):
+        sig += (0.7 ** (h - 1)) * rng.uniform(0.9, 1.1) * np.sin(h * phase)
+    sig += 0.40 * _pink_noise(N_SAMPLES, rng)  # steady prop wash
+    return sig
+
+
+def _engine(rng):
+    """Combustion / one-way-attack UAS (Shahed-class): LOW engine-firing
+    fundamental (~40-130 Hz) with MANY harmonics reaching high, irregular piston
+    AM, and heavy broadband exhaust. This is the class the old 400 Hz high-pass
+    erased -- it only survives with the 40 Hz corner."""
+    t = np.arange(N_SAMPLES) / SR
+    f0 = rng.uniform(40, 130)
+    drift = (1.0 + 0.03 * np.sin(2 * np.pi * rng.uniform(0.2, 1.0) * t)
+             + 0.01 * rng.standard_normal(N_SAMPLES).cumsum() / np.sqrt(N_SAMPLES))
+    phase = 2 * np.pi * np.cumsum(f0 * drift) / SR
+    sig = np.zeros(N_SAMPLES)
+    n_harm = int(rng.integers(10, 20))
+    for h in range(1, n_harm + 1):
+        am = 1.0 + 0.4 * np.sin(2 * np.pi * rng.uniform(3, 12) * t + rng.uniform(0, 6.28))
+        sig += (0.82 ** (h - 1)) * rng.uniform(0.7, 1.3) * am * np.sin(h * phase)
+    sig += 0.50 * _pink_noise(N_SAMPLES, rng)
+    return sig
+
+
+def _jet(rng):
+    """Manned fixed-wing / jet: dominant broadband roar + a few high turbine
+    whine tones + low rumble. The loud 'must NOT trigger' negative."""
+    t = np.arange(N_SAMPLES) / SR
+    roar = _pink_noise(N_SAMPLES, rng)
+    sig = np.zeros(N_SAMPLES)
+    for _ in range(int(rng.integers(1, 4))):  # turbine whine tones
+        f = rng.uniform(2000, 6000)
+        drift = 1.0 + 0.02 * np.sin(2 * np.pi * rng.uniform(0.1, 0.5) * t)
+        phase = 2 * np.pi * np.cumsum(f * drift) / SR
+        sig += rng.uniform(0.15, 0.4) * np.sin(phase)
+    low = _pink_noise(N_SAMPLES, rng)
+    X = np.fft.rfft(low)
+    freqs = np.fft.rfftfreq(N_SAMPLES, 1.0 / SR)
+    X[freqs > 300] *= 0.2
+    low = np.fft.irfft(X, n=N_SAMPLES)
+    return sig + 0.8 * roar + 0.6 * low
+
+
+# Classes synthesized by a dedicated (non-rotor) generator.
+SPECIAL_SYNTH = {
+    "Bird": _bird,
+    "Fixed-wing UAS": _prop,
+    "Combustion UAS": _engine,
+    "Manned fixed-wing": _jet,
+}
+
+
 def make_clip(label, rng, snr_db=None):
     """Generate one labeled clip with randomized SNR and gain."""
     if label == "None":
         sig = _negative(rng)
     else:
-        p = DRONE_PROFILES[label]
-        sig = _rotor_comb(rng, p["f0"], p["n_harm"], p["rolloff"])
+        if label in SPECIAL_SYNTH:
+            sig = SPECIAL_SYNTH[label](rng)
+        else:
+            p = DRONE_PROFILES[label]
+            sig = _rotor_comb(rng, p["f0"], p["n_harm"], p["rolloff"])
         # Mix in background noise at a randomized SNR to model distance/environment
         if snr_db is None:
             snr_db = rng.uniform(-5, 20)   # -5 dB (far/noisy) .. 20 dB (close/quiet)
@@ -134,7 +232,8 @@ def build_synthetic_dataset(per_class=400, seed=1337):
     rng = np.random.default_rng(seed)
     waves, labels = [], []
     for li, label in enumerate(LABELS):
-        if label != "None" and label not in DRONE_PROFILES:
+        if (label != "None" and label not in DRONE_PROFILES
+                and label not in SPECIAL_SYNTH):
             continue  # real-data-only class (no synthetic profile) -- learned from field audio
         for _ in range(per_class):
             waves.append(make_clip(label, rng))

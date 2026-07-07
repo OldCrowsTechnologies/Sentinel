@@ -166,6 +166,8 @@ export default function ContactDetailScreen({
                 category: 'electric-multirotor',
                 estFundamentalHz: threat.estFundamentalHz ?? null,
                 sizeClass: threat.sizeClass ?? null,
+                calloutLabel: 'Unknown build',
+                nonThreatLabel: 'None',
               }).map((line, i) => (
                 <Text key={i} style={s.specLine}>
                   • {line}

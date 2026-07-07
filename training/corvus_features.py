@@ -36,12 +36,23 @@ FMIN = 50.0         # lowest mel edge (Hz)
 FMAX = 8000.0       # highest mel edge (Hz) == Nyquist for SR=16000
 
 # Noise rejection: a 1st-order IIR high-pass applied (after DC removal, before
-# framing) to suppress voice fundamentals (~85-255 Hz) and PA/crowd low end
-# while keeping drone rotor signatures (>~400 Hz). This is a FEATURE-PATH change,
-# so lib/dsp.ts implements the IDENTICAL recurrence and the model is trained with
-# it on -- keep both in lockstep or parity breaks (run_parity.sh).
+# framing). The corner frequency is EXPORTED in the model JSON (dsp.highPass.fc)
+# and lib/dsp.ts reads it from there, so this value can be retuned in Python
+# alone and parity still holds after a retrain (the recurrence is identical on
+# both sides -- run_parity.sh).
+#
+# TAXONOMY CHANGE (2026-07-07): lowered 400 -> 40 Hz. The old 400 Hz corner was
+# tuned to kill voice fundamentals (~85-255 Hz), but it also ERASED the defining
+# low-frequency signatures of the new classes -- combustion/one-way-attack UAS
+# (engine firing ~40-130 Hz), manned rotorcraft, and prop/turbine aircraft all
+# live mostly below 400 Hz. Voice rejection now leans on the STATIONARITY GATE
+# (voice is bursty/non-stationary -> suppressed; engine & rotor combs are steady
+# -> kept) plus the runtime VAD + confidence gating. TRADE-OFF: more low-band
+# energy reaches the model, so voice-rejection must be re-validated in the field
+# (Analysis screen: record voices, confirm drone score stays ~0). Revert = set
+# this back to 400.0 and retrain.
 HIGH_PASS_ENABLED = True
-HIGH_PASS_FC = 400.0  # Hz
+HIGH_PASS_FC = 40.0  # Hz  (was 400.0 -- see note above)
 
 # Stationarity gate: a per-frequency-bin gain = median/mean of that bin's power
 # across the window's frames. A drone's blade-pass comb is STATIONARY (present in
@@ -57,23 +68,50 @@ STATIONARITY_MIN_FRAMES = 4  # need a few frames for a meaningful median
 # knocking down bursty crowd/voice. Sweep-tuned; env override for experiments.
 STATIONARITY_FLOOR = float(os.environ.get("CORVUS_STAT_FLOOR", "0.5"))
 
-# Drone-band energy ratios (Hz ranges) -- documented blade-pass regions.
+# Band energy ratios (Hz ranges) -- documented blade-pass / engine regions.
 # These give the classifier explicit, interpretable handles on each platform.
+# Two bands added for the full taxonomy: a low band for combustion/engine +
+# manned-rotor fundamentals (needs the 40 Hz high-pass above to survive), and a
+# high band for FPV/small-multirotor fast blade-pass. Adding ratios is parity-
+# safe: dsp.ts iterates cfg.bandRatios from the JSON, so both sides stay in sync.
 BAND_RATIOS = [
-    (700.0, 1500.0),    # Skydio X2 fundamental region (~800-1400)
+    (40.0, 200.0),      # NEW: combustion/engine firing + manned-rotor low end
+    (700.0, 1500.0),    # Skydio X2 / medium-multirotor fundamental (~800-1400)
     (1100.0, 1900.0),   # DJI Phantom region (~1200-1800)
     (850.0, 1300.0),    # Parrot Anafi region (~920-1200)
+    (1800.0, 3500.0),   # NEW: FPV / small-multirotor fast blade-pass
     (50.0, 700.0),      # broadband low rumble beneath tonal comb
 ]
 N_BAND_RATIOS = len(BAND_RATIOS)
 
 FEATURE_DIM = 2 * N_MELS + N_BAND_RATIOS
 
-# Class labels (index order is the model output order)
+# Class labels (index order is the model output order).
+#
+# Full airspace taxonomy (2026-07-07). A single flat softmax over acoustically-
+# separable classes: the app calls out the most specific class the SOUND supports.
+# Brand-level ID among same-size electric multirotors isn't reliable by mic --
+# that comes from Remote ID -- so those are covered by size CATEGORIES here, with
+# a few flagship models kept as their own classes. Grouping (see docs/TAXONOMY.md
+# + train_corvus.build_open_set):
+#   NON-THREAT (called out, never alarmed): None, Bird, Manned rotorcraft, Manned fixed-wing
+#   UAS CATEGORIES (the "every type" coverage): Small/Medium/Large multirotor,
+#                    FPV racer, Fixed-wing UAS, Combustion UAS
+#   SPECIFIC MODELS (acoustic best-effort; RID authoritative): Skydio X2, DJI
+#                    Phantom, Parrot Anafi, Potensic Atom 2, DJI Mini 3/5 Pro,
+#                    DJI FPV, DJI Mavic 3, Yuneec
+#   OPEN-SET CATCH-ALL: Unknown
 LABELS = [
-    "None", "Skydio X2", "DJI Phantom", "Parrot Anafi", "Potensic Atom 2",
+    # Non-threat
+    "None", "Bird", "Manned rotorcraft", "Manned fixed-wing",
+    # UAS acoustic categories
+    "Small multirotor", "Medium multirotor", "Large multirotor",
+    "FPV racer", "Fixed-wing UAS", "Combustion UAS",
+    # Specific models
+    "Skydio X2", "DJI Phantom", "Parrot Anafi", "Potensic Atom 2",
     "DJI Mini 3 Pro", "DJI Mini 5 Pro", "DJI FPV", "DJI Mavic 3", "Yuneec",
-    "Manned rotorcraft", "Unknown",
+    # Open-set catch-all
+    "Unknown",
 ]
 
 

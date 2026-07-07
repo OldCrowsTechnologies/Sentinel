@@ -51,6 +51,10 @@ export interface OpenSetConfig {
   noneIndex: number;
   unknownIndex: number;
   specificDroneIndices: number[];
+  // Full-taxonomy grouping (v3+). Optional so pre-taxonomy models still load.
+  nonThreatIndices?: number[]; // None, Bird, Manned rotorcraft, Manned fixed-wing
+  threatIndices?: number[]; // any UAS (categories + models + Unknown)
+  categoryIndices?: number[]; // acoustic TYPE fallback (Small/Med/Large multirotor, FPV, Fixed-wing UAS, Combustion UAS)
   thresholds: { droneGate: number; matchProb: number; oodDistance: number };
 }
 
@@ -62,13 +66,16 @@ export type SizeClass = 'small' | 'medium' | 'large';
 /** Open-set recognition result: is it a drone, and is it a KNOWN drone? */
 export interface OpenSetVerdict {
   dronePresent: boolean;
-  droneness: number; // 1 - P(None)
+  droneness: number; // 1 - sum P(non-threat classes)  (= total threat probability)
   isUnknownBuild: boolean; // drone present, but not a confident library match
   matchedModel: string | null; // known model label when matched
   oodScore: number; // nearest-known normalized distance (higher = more novel)
   category: DroneCategory;
   estFundamentalHz: number | null; // acoustic "possible spec" for unknown builds
   sizeClass: SizeClass | null; // coarse size from the rotor fundamental
+  // Full-taxonomy call-outs: the single best human label for this contact.
+  calloutLabel: string; // drone model/type when present, else the non-threat class
+  nonThreatLabel: string; // best non-threat class (None/Bird/Helicopter/Jet) -- VAD fallback
 }
 
 export interface ClassificationResult {
@@ -196,12 +203,13 @@ export class DroneClassifier {
     const rawLabel = this.model.labels[classIdx];
     const verdict = this.openSetVerdict(x, probs, samples);
 
-    // The reported label is the OPEN-SET verdict, not the raw argmax: a known
-    // model when confidently matched, else "Unknown build" when a drone is
-    // present but not in our library, else the raw label (e.g. "None").
-    const label = verdict.dronePresent
-      ? verdict.matchedModel ?? UNKNOWN_BUILD_LABEL
-      : rawLabel;
+    // The reported label is the OPEN-SET call-out, which names the most specific
+    // class the sound supports across the FULL taxonomy: a confident brand
+    // (Skydio X2), else the acoustic TYPE (FPV racer / Combustion UAS / Medium
+    // multirotor), else "Unknown build" for an uncategorizable UAS, else the
+    // non-threat class positively called out (Bird / Manned rotorcraft / Manned
+    // fixed-wing / None).
+    const label = verdict.calloutLabel;
     const distance = this.estimateDistance(rms, verdict.matchedModel ?? rawLabel);
 
     // --- Noise rejection: VAD + confidence gating (runtime-safe) ---
@@ -226,8 +234,17 @@ export class DroneClassifier {
       }
     }
 
+    // Final call-out: a confirmed UAS shows its model/type; a UAS suppressed by
+    // the voice gate falls back to the ambient (non-threat) readout; a genuine
+    // non-threat (Bird/Helicopter/Jet/None) is called out positively.
+    const reportedLabel = droneDetected
+      ? label
+      : verdict.dronePresent
+        ? verdict.nonThreatLabel
+        : label;
+
     return {
-      label: droneDetected ? label : 'None',
+      label: reportedLabel,
       confidence: adjConfidence,
       classIdx,
       probs,
@@ -259,29 +276,45 @@ export class DroneClassifier {
     probs: number[],
     samples: Float32Array | number[]
   ): OpenSetVerdict {
+    const labels = this.model.labels;
+    let argmax = 0;
+    for (let i = 1; i < probs.length; i++) if (probs[i] > probs[argmax]) argmax = i;
+
     const os = this.model.openSet;
     if (!os) {
-      let ci = 0;
-      for (let i = 1; i < probs.length; i++) if (probs[i] > probs[ci]) ci = i;
-      const lbl = this.model.labels[ci];
+      const lbl = labels[argmax];
       const present = lbl !== 'None';
       return {
         dronePresent: present,
-        droneness: present ? probs[ci] : 0,
+        droneness: present ? probs[argmax] : 0,
         isUnknownBuild: lbl === 'Unknown',
         matchedModel: present && lbl !== 'Unknown' ? lbl : null,
         oodScore: 0,
         category: present ? 'electric-multirotor' : 'unknown',
         estFundamentalHz: null,
         sizeClass: null,
+        calloutLabel: lbl,
+        nonThreatLabel: present ? 'None' : lbl,
       };
     }
 
     const { noneIndex, specificDroneIndices, classStats, thresholds } = os;
-    const droneness = noneIndex >= 0 ? 1 - probs[noneIndex] : Math.max(...probs);
+    // Non-threat set: None + Bird + Manned rotorcraft + Manned fixed-wing.
+    // droneness = total THREAT probability = 1 - sum(P over non-threat). This
+    // replaces the old 1 - P(None), which wrongly treated a jet/bird as a drone.
+    const nonThreat = os.nonThreatIndices ?? (noneIndex >= 0 ? [noneIndex] : []);
+    const categoryIdx = os.categoryIndices ?? [];
+    let nonThreatProb = 0;
+    for (const i of nonThreat) nonThreatProb += probs[i];
+    const droneness = nonThreat.length ? 1 - nonThreatProb : Math.max(...probs);
     const dronePresent = droneness >= thresholds.droneGate;
 
-    // Nearest known specific-drone class by variance-normalized distance (OOD).
+    // Best non-threat class label (for positive call-outs + VAD fallback).
+    let bestNT = noneIndex >= 0 ? noneIndex : (nonThreat[0] ?? argmax);
+    for (const i of nonThreat) if (probs[i] > probs[bestNT]) bestNT = i;
+    const nonThreatLabel = labels[bestNT] ?? 'None';
+
+    // Nearest known specific-MODEL class by variance-normalized distance (OOD).
     let oodScore = Infinity;
     let bestSpecific = -1;
     let bestSpecificProb = -1;
@@ -303,13 +336,27 @@ export class DroneClassifier {
 
     let matchedModel: string | null = null;
     let isUnknownBuild = false;
+    let calloutLabel: string;
     if (dronePresent) {
       const goodMatch =
         bestSpecific >= 0 &&
         bestSpecificProb >= thresholds.matchProb &&
         oodScore <= thresholds.oodDistance;
-      if (goodMatch) matchedModel = this.model.labels[bestSpecific];
-      else isUnknownBuild = true;
+      if (goodMatch) {
+        matchedModel = labels[bestSpecific];
+        calloutLabel = matchedModel; // confident brand, e.g. "Skydio X2"
+      } else if (categoryIdx.includes(argmax)) {
+        // No confident brand, but the sound maps to a known TYPE -> call the
+        // category, e.g. "FPV racer" / "Combustion UAS" / "Medium multirotor".
+        calloutLabel = labels[argmax];
+        isUnknownBuild = true;
+      } else {
+        calloutLabel = UNKNOWN_BUILD_LABEL; // drone present, uncategorizable
+        isUnknownBuild = true;
+      }
+    } else {
+      // Not a UAS -> positively call out the non-threat class it is.
+      calloutLabel = nonThreatLabel; // None / Bird / Manned rotorcraft / Manned fixed-wing
     }
 
     // Acoustic "possible spec" estimate (diagnostic only) for unknown builds.
@@ -332,6 +379,8 @@ export class DroneClassifier {
       category: dronePresent ? 'electric-multirotor' : 'unknown',
       estFundamentalHz,
       sizeClass,
+      calloutLabel,
+      nonThreatLabel,
     };
   }
 
