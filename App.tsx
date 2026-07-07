@@ -5,7 +5,6 @@ import { Rajdhani_500Medium, Rajdhani_600SemiBold, Rajdhani_700Bold } from '@exp
 import { JetBrainsMono_400Regular, JetBrainsMono_500Medium, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 
 import LaunchScreen from './app/LaunchScreen';
-import VipGateScreen from './app/VipGateScreen';
 import SentinelScreen from './app/SentinelScreen';
 import SettingsScreen, { SettingsState } from './app/SettingsScreen';
 import DetectionsScreen from './app/DetectionsScreen';
@@ -51,7 +50,6 @@ export default function App() {
   });
 
   const [showLaunch, setShowLaunch] = useState(true);
-  const [authed, setAuthed] = useState(false);
   const [tab, setTab] = useState<TabKey>('monitor');
   const [sub, setSub] = useState<SubScreen>(null);
   const [isMonitoring, setMonitoring] = useState(false);
@@ -366,13 +364,12 @@ export default function App() {
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <StatusBar barStyle="light-content" />
       <View style={{ flex: 1 }}>{renderMain()}</View>
-      {!showLaunch && authed && <TabBar active={tab} onChange={changeTab} />}
+      {!showLaunch && <TabBar active={tab} onChange={changeTab} />}
 
       {selectedThreat && (
         <ContactDetailScreen threat={selectedThreat} onClose={() => setSelectedThreat(null)} onRecord={captureSpecimen} />
       )}
       {showLaunch && <LaunchScreen onEnter={() => setShowLaunch(false)} />}
-      {!showLaunch && !authed && <VipGateScreen onUnlock={() => setAuthed(true)} />}
     </View>
   );
 }
