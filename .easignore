@@ -1,0 +1,30 @@
+# .easignore -- files EAS Build should NOT upload in the project archive.
+# NOTE: when this file exists, EAS uses it INSTEAD of .gitignore, so it must
+# also repeat the .gitignore entries. Keep in sync with .gitignore.
+
+# --- inherited from .gitignore ---
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.env
+ios/
+android/
+training/parity_cases.json
+training/__pycache__/
+*.pyc
+.DS_Store
+.claude/
+
+# --- build-archive slimming: non-runtime assets (only assets/models/*.json ships) ---
+# Training corpus (multi-MB WAVs) -- captured on-device at runtime, not bundled.
+data/
+# Python training / synthesis / stress tooling -- not part of the RN bundle.
+training/
+stress/
+# Docs, spec PDFs, hardware STL/PNG -- not runtime.
+docs/
+# Model + branding backups (keep the live model assets/models/corvus-model.json).
+assets/models/*.BACKUP*.json
+assets/branding/*_original_backup*
