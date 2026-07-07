@@ -29,6 +29,7 @@ import { initNotifications, notifyIntercept } from './lib/notifications';
 import { initLocation, startLocation, stopLocation, getLastFix } from './lib/locationService';
 import { saveSpecimen, pendingCount } from './lib/specimenStore';
 import { syncPending } from './lib/specimenSync';
+import { queueFinding, syncFindings } from './lib/findingsSync';
 import { logDetection } from './lib/missionLog';
 import corvusModelJson from './assets/models/corvus-model.json';
 
@@ -99,6 +100,17 @@ export default function App() {
     startMesh((rep) => ingestReport(rep));
     return () => stopMesh();
   }, [ingestReport]);
+
+  // Internet fleet-sync tier: while monitoring, every 30s flush queued findings +
+  // pull peers' so a device that gains a network auto-publishes and catches up.
+  // No-ops offline / when no endpoint is configured. Ungated (no sign-in).
+  useEffect(() => {
+    if (!isMonitoring) return;
+    const id = setInterval(() => {
+      void syncFindings(nodeIdRef.current);
+    }, 30000);
+    return () => clearInterval(id);
+  }, [isMonitoring]);
 
   const [specimenCount, setSpecimenCount] = useState(0);
 
@@ -191,7 +203,8 @@ export default function App() {
     // transport lands) and fold this node's own report into fusion.
     if (label !== 'None') {
       const rep = reportFromDetection(det, nodeIdRef.current, seqRef.current++);
-      broadcastReport(rep);
+      broadcastReport(rep); // offline P2P tier (inert until a native transport lands)
+      queueFinding(rep); // internet tier: auto-publishes whenever a network is available
       ingestReport(rep);
     }
 
@@ -253,6 +266,7 @@ export default function App() {
         const fix = getLastFix();
         sessionOriginRef.current = fix ? { lat: fix.lat, lon: fix.lon, accuracy: fix.accuracy } : null;
         syncPending().then(() => pendingCount()).then(setSpecimenCount).catch(() => {});
+        syncFindings(nodeIdRef.current).catch(() => {}); // publish/pull findings on start
         await audio.startMonitoring(onWindow);
         setMonitoring(true);
         setStatus('Monitoring — listening for airborne contacts…');
