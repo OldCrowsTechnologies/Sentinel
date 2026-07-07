@@ -11,3 +11,10 @@ training/__pycache__/
 *.pyc
 .DS_Store
 .claude/
+
+# Training audio -- kept on disk for local training, NOT in git (bloats repo +
+# every EAS build upload). Version via Git LFS or a data bucket if needed.
+*.wav
+# Model/branding backups
+*.BACKUP*.json
+assets/branding/*_original_backup*
