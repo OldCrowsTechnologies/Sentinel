@@ -22,6 +22,7 @@ import DroneClassifier, { CorvusModel } from './lib/mlClassifier';
 import ThreatTracker, { Threat, AlertEvent, Detection } from './lib/threatTracker';
 import { reportFromDetection, type ContactReport } from './lib/meshTypes';
 import { startMesh, stopMesh, broadcastReport } from './lib/meshTransport';
+import { installRtlTransport } from './lib/rtlTransportNative';
 import { fuseReports, type FusedTrack } from './lib/meshFusion';
 import CorvusVoice from './lib/corvusVoice';
 import { writeReport } from './lib/reportGenerator';
@@ -100,6 +101,13 @@ export default function App() {
     startMesh((rep) => ingestReport(rep));
     return () => stopMesh();
   }, [ingestReport]);
+
+  // Install the native RTL-SDR transport. No-op under Expo Go / any build without
+  // the native TCP module, so the RF tab stays honestly "no SDR" until a dev
+  // build ships the bridge.
+  useEffect(() => {
+    installRtlTransport();
+  }, []);
 
   // Internet fleet-sync tier: while monitoring, every 30s flush queued findings +
   // pull peers' so a device that gains a network auto-publishes and catches up.

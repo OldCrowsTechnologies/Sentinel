@@ -47,8 +47,19 @@ export function registerRtlTransport(t: RtlTransport | null): void {
   transport = t;
 }
 
-const RTL_HOST = '127.0.0.1';
-const RTL_PORT = 1234;
+// rtl_tcp endpoint. Defaults to the on-device companion driver app; overridable
+// so a dev build can point at a networked rtl_tcp (e.g. `rtl_tcp -a <PC-IP>` on
+// the bench) to validate the pipeline against real hardware before it's on-phone.
+let RTL_HOST = '127.0.0.1';
+let RTL_PORT = 1234;
+export function setRtlEndpoint(host: string, port = 1234): void {
+  RTL_HOST = host;
+  RTL_PORT = port;
+}
+export function getRtlEndpoint(): { host: string; port: number } {
+  return { host: RTL_HOST, port: RTL_PORT };
+}
+
 const SAMPLE_RATE = 1_024_000; // Hz -- covers up to 500 kHz LoRa BW
 const FRAME_SAMPLES = 32768; // ~32 ms snapshot per band
 
@@ -57,17 +68,30 @@ let connected = false;
 let scanning = false;
 let onDetect: ((d: RfLinkDetection) => void) | null = null;
 
+let lastError: string | null = null;
+export function getRfLastError(): string | null {
+  return lastError;
+}
+
 export function getRfModuleStatus(): RfModuleStatus {
   if (!transport) {
     return {
       present: false,
       name: null,
-      note: 'No RTL-SDR transport. Install the RTL2832U USB driver app and use a dev build to enable sub-GHz RF.',
+      note: 'No RTL-SDR transport. This build has no native USB bridge — install a dev build to enable sub-GHz RF.',
     };
   }
-  return connected
-    ? { present: true, name: 'Nooelec NESDR Nano 3 (RTL-SDR)', note: 'RTL-SDR connected. Scanning sub-GHz control links.' }
-    : { present: true, name: 'Nooelec NESDR Nano 3 (RTL-SDR)', note: 'RTL-SDR transport ready. Press connect to start.' };
+  if (connected) {
+    return { present: true, name: 'Nooelec NESDR Nano 3 (RTL-SDR)', note: 'RTL-SDR connected. Scanning sub-GHz control links.' };
+  }
+  const where = `${RTL_HOST}:${RTL_PORT}`;
+  return {
+    present: true,
+    name: 'Nooelec NESDR Nano 3 (RTL-SDR)',
+    note: lastError
+      ? `Couldn't reach rtl_tcp at ${where}: ${lastError}. Start the RTL-SDR driver app (grant USB), then scan.`
+      : `Ready. Plug in the dongle, start the RTL-SDR driver app (rtl_tcp on ${where}), then scan.`,
+  };
 }
 
 /** Open the rtl_tcp connection and configure the tuner. */
@@ -79,8 +103,10 @@ export async function connectModule(): Promise<boolean> {
     client = new RtlTcpClient(sock);
     client.configure({ sampleRate: SAMPLE_RATE, gainTenthDb: 'auto' });
     connected = true;
+    lastError = null;
     return true;
-  } catch {
+  } catch (e) {
+    lastError = e instanceof Error ? e.message : String(e);
     client = null;
     connected = false;
     return false;

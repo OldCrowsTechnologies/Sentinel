@@ -23,6 +23,7 @@ import {
 } from './ui';
 import {
   getRfModuleStatus,
+  getRfLastError,
   startLinkScan,
   stopLinkScan,
   type RfLinkDetection,
@@ -72,6 +73,7 @@ export default function RemoteIdScreen() {
   const [status, setStatus] = useState('Idle. Press SCAN to listen for Remote ID.');
   const [links, setLinks] = useState<RfLinkDetection[]>([]);
   const [rfScanning, setRfScanning] = useState(false);
+  const [rfNote, setRfNote] = useState<string | null>(null);
 
   const rf = getRfModuleStatus();
   const fft = fftPoints();
@@ -97,8 +99,12 @@ export default function RemoteIdScreen() {
       return;
     }
     setLinks([]);
+    setRfNote(null);
     const ok = await startLinkScan((d) => setLinks((prev) => [d, ...prev].slice(0, 50)));
     setRfScanning(ok);
+    if (!ok) {
+      setRfNote(getRfLastError() ? `No rtl_tcp server: ${getRfLastError()}` : rf.note);
+    }
   };
 
   const toggle = async () => {
@@ -191,6 +197,8 @@ export default function RemoteIdScreen() {
                 onPress={toggleRf}
               />
             </View>
+
+            {rfNote ? <Text style={[s.specCaption, { color: COLORS.gold }]}>{rfNote}</Text> : null}
 
             {links.length > 0 ? (
               links.map((d, i) => (
