@@ -23,6 +23,13 @@ import { ingestRaw } from './meshTransport';
 const DEFAULT_FINDINGS_URL = 'https://www.oldcrowswireless.com/api/corvus/findings';
 const FINDINGS_URL = process.env.EXPO_PUBLIC_CORVUS_FINDINGS_URL || DEFAULT_FINDINGS_URL;
 
+// Fleet auth: a shared app token (NOT a user sign-in) + a per-deployment fleet id
+// for isolation. Both are inert when unset -- a missing endpoint ignores them, and
+// an air-gapped build never reaches this code. See docs/FINDINGS-ENDPOINT-SPEC.md.
+const APP_TOKEN = process.env.EXPO_PUBLIC_CORVUS_APP_TOKEN || '';
+const FLEET_ID = process.env.EXPO_PUBLIC_CORVUS_FLEET_ID || 'default';
+const authHeaders: Record<string, string> = { 'x-app-token': APP_TOKEN, 'x-fleet-id': FLEET_ID };
+
 // Offline-first outbound queue of locally-detected findings awaiting publish.
 const outbox: ContactReport[] = [];
 const OUTBOX_CAP = 1000; // bound memory if we stay offline a long time
@@ -72,7 +79,7 @@ export async function syncFindings(
     try {
       const res = await fetch(FINDINGS_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ reports: batch.map(encodeReport) }),
       });
       if (res.ok) {
@@ -88,7 +95,7 @@ export async function syncFindings(
   let received = 0;
   try {
     const sep = FINDINGS_URL.includes('?') ? '&' : '?';
-    const res = await fetch(`${FINDINGS_URL}${sep}since=${lastPullT}`, { method: 'GET' });
+    const res = await fetch(`${FINDINGS_URL}${sep}since=${lastPullT}`, { method: 'GET', headers: authHeaders });
     if (res.ok) {
       const data = await res.json().catch(() => null);
       const items: unknown[] = Array.isArray(data?.reports) ? data.reports : [];
