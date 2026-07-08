@@ -24,6 +24,7 @@ import { reportFromDetection, type ContactReport } from './lib/meshTypes';
 import { startMesh, stopMesh, broadcastReport } from './lib/meshTransport';
 import { installRtlTransport } from './lib/rtlTransportNative';
 import { subscribeRfLinks, type RfLinkDetection } from './lib/rfSensorService';
+import { initCloud, pushDetection, pushPosition } from './lib/cloudSync';
 import { fuseReports, type FusedTrack } from './lib/meshFusion';
 import CorvusVoice from './lib/corvusVoice';
 import { writeReport } from './lib/reportGenerator';
@@ -114,6 +115,12 @@ export default function App() {
   const [rfLinks, setRfLinks] = useState<RfLinkDetection[]>([]);
   useEffect(() => subscribeRfLinks(setRfLinks), []);
 
+  // C2 cloud tier: restore any existing agency enrollment at startup. No-op until
+  // a Supabase backend is configured + the device is enrolled with a seat code.
+  useEffect(() => {
+    void initCloud();
+  }, []);
+
   // Internet fleet-sync tier: while monitoring, every 30s flush queued findings +
   // pull peers' so a device that gains a network auto-publishes and catches up.
   // No-ops offline / when no endpoint is configured. Ungated (no sign-in).
@@ -121,6 +128,8 @@ export default function App() {
     if (!isMonitoring) return;
     const id = setInterval(() => {
       void syncFindings(nodeIdRef.current);
+      const fix = getLastFix();
+      if (fix) void pushPosition(fix); // keep C2 map live with this deputy's position
     }, 30000);
     return () => clearInterval(id);
   }, [isMonitoring]);
@@ -218,6 +227,7 @@ export default function App() {
       const rep = reportFromDetection(det, nodeIdRef.current, seqRef.current++);
       broadcastReport(rep); // offline P2P tier (inert until a native transport lands)
       queueFinding(rep); // internet tier: auto-publishes whenever a network is available
+      void pushDetection(rep); // C2 cloud tier: straight to command (inert until enrolled)
       ingestReport(rep);
     }
 
