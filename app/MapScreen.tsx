@@ -30,6 +30,7 @@ import type { Threat } from '../lib/threatTracker';
 import { getRemoteIdContacts } from '../lib/remoteIdService';
 import type { GeoFix } from '../lib/locationService';
 import { ellipseToPolygon, type FusedTrack } from '../lib/meshFusion';
+import type { RfLinkDetection } from '../lib/rfSensorService';
 
 setAccessToken(null); // MapLibre + OSM needs no token
 
@@ -93,13 +94,34 @@ export default function MapScreen({
   operator,
   threats,
   fusedTracks = [],
+  rfLinks = [],
 }: {
   operator: GeoFix | null;
   threats: Threat[];
   fusedTracks?: FusedTrack[];
+  rfLinks?: RfLinkDetection[];
 }) {
   const [aoStatus, setAoStatus] = useState('');
   const rid = getRemoteIdContacts();
+
+  // RF control-link detections have no bearing/range (omni antenna), so we mark
+  // an honest PRESENCE ring at the sensor (operator) position — never a fake pin.
+  const rfActive = rfLinks.length > 0;
+  const latestRf = rfLinks[0];
+  const rfRingFC =
+    operator && rfActive
+      ? {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              id: 'rfring',
+              geometry: { type: 'LineString', coordinates: ring(operator.lat, operator.lon, 200) },
+              properties: {},
+            },
+          ],
+        }
+      : { type: 'FeatureCollection', features: [] };
 
   // Only tracks with a real fix get a pin + ellipse; the rest fall back to the
   // acoustic range rings below (honest: no fix → no invented pin).
@@ -176,6 +198,16 @@ export default function MapScreen({
           </ShapeSource>
         )}
 
+        {/* RF control-link presence ring at the sensor (omni: no bearing/range). */}
+        {operator && rfActive && (
+          <ShapeSource id="rfring" shape={rfRingFC as any}>
+            <LineLayer
+              id="rfringLine"
+              style={{ lineColor: COLORS.gold, lineWidth: 2, lineOpacity: 0.9, lineDasharray: [1, 1] }}
+            />
+          </ShapeSource>
+        )}
+
         {/* Fused mesh fixes: uncertainty ellipse (region, never a bare pin). */}
         {weakFC.features.length > 0 && (
           <ShapeSource id="fusedWeak" shape={weakFC as any}>
@@ -232,6 +264,12 @@ export default function MapScreen({
             {fixTracks.length} MESH FIX{fixTracks.length > 1 ? 'ES' : ''} — ELLIPSE = UNCERTAINTY (NOT A POINT).
           </Text>
         )}
+        {rfActive && (
+          <Text style={s.rf}>
+            ◎ RF CONTROL LINK · {latestRf.kind === 'lora' ? 'LORA CSS' : 'CONTROL LINK'} · {latestRf.band} · +
+            {latestRf.peakDb} dB (PRESENCE — NO BEARING/RANGE)
+          </Text>
+        )}
         {!operator && <Text style={s.warn}>NO GPS FIX — ACOUSTIC RINGS NEED YOUR POSITION.</Text>}
         {aoStatus ? <Text style={s.ao}>{aoStatus}</Text> : null}
       </View>
@@ -270,6 +308,7 @@ const s = StyleSheet.create({
   legendText: { fontFamily: FONTS.body, color: COLORS.muted, fontSize: 11, letterSpacing: 0.5 },
   warn: { fontFamily: FONTS.body, color: COLORS.warning, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
   fused: { fontFamily: FONTS.body, color: COLORS.danger, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
+  rf: { fontFamily: FONTS.mono, color: COLORS.gold, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
   ao: { fontFamily: FONTS.body, color: COLORS.teal, fontSize: 11, marginTop: 5, letterSpacing: 0.5 },
   controls: { position: 'absolute', bottom: 14, left: 12, right: 12, flexDirection: 'row' },
 });

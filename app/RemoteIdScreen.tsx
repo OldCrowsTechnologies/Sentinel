@@ -205,13 +205,17 @@ export default function RemoteIdScreen() {
                 <View key={i} style={s.linkItem}>
                   <View style={s.row}>
                     <Text style={s.uas}>
-                      {d.kind.toUpperCase()} · {d.band}
+                      {d.kind === 'lora' ? 'LORA CSS' : d.kind === 'control-link' ? 'CONTROL LINK' : d.kind.toUpperCase()} · {d.band}
                     </Text>
                     <Text style={s.rssi}>{d.rssi} dBm</Text>
                   </View>
                   <View style={s.kvRow}>
-                    <Text style={s.kvKey}>DETECTION STRENGTH</Text>
-                    <Text style={s.kvVal}>{d.score}</Text>
+                    <Text style={s.kvKey}>PEAK OVER FLOOR</Text>
+                    <Text style={s.kvVal}>{d.peakDb} dB</Text>
+                  </View>
+                  <View style={s.kvRow}>
+                    <Text style={s.kvKey}>FREQ OFFSET</Text>
+                    <Text style={s.kvVal}>{(d.offsetHz / 1000).toFixed(0)} kHz</Text>
                   </View>
                   <View style={s.kvRow}>
                     <Text style={s.kvKey}>TIME</Text>

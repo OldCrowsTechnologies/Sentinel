@@ -23,6 +23,7 @@ import ThreatTracker, { Threat, AlertEvent, Detection } from './lib/threatTracke
 import { reportFromDetection, type ContactReport } from './lib/meshTypes';
 import { startMesh, stopMesh, broadcastReport } from './lib/meshTransport';
 import { installRtlTransport } from './lib/rtlTransportNative';
+import { subscribeRfLinks, type RfLinkDetection } from './lib/rfSensorService';
 import { fuseReports, type FusedTrack } from './lib/meshFusion';
 import CorvusVoice from './lib/corvusVoice';
 import { writeReport } from './lib/reportGenerator';
@@ -108,6 +109,10 @@ export default function App() {
   useEffect(() => {
     installRtlTransport();
   }, []);
+
+  // Observe RF control-link detections app-wide so the map can plot them.
+  const [rfLinks, setRfLinks] = useState<RfLinkDetection[]>([]);
+  useEffect(() => subscribeRfLinks(setRfLinks), []);
 
   // Internet fleet-sync tier: while monitoring, every 30s flush queued findings +
   // pull peers' so a device that gains a network auto-publishes and catches up.
@@ -353,7 +358,7 @@ export default function App() {
           />
         </ScreenBG>
       );
-    if (tab === 'map') return <MapScreen operator={getLastFix()} threats={threats} fusedTracks={fusedTracks} />;
+    if (tab === 'map') return <MapScreen operator={getLastFix()} threats={threats} fusedTracks={fusedTracks} rfLinks={rfLinks} />;
     if (tab === 'rf')
       return (
         <ScreenBG>

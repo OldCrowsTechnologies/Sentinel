@@ -16,15 +16,18 @@
  */
 
 import { detectLora } from './loraDetect';
+import { detectEnergy } from './rfEnergyDetect';
 import { RtlTcpClient, RF_SCAN_BANDS, type RtlSocket } from './rtlTcp';
 
 export type RfBand = '433MHz' | '868MHz' | '915MHz' | '2.4GHz';
 
 export interface RfLinkDetection {
-  kind: 'lora' | 'elrs' | 'ocusync' | 'unknown';
+  kind: 'lora' | 'elrs' | 'ocusync' | 'control-link' | 'unknown';
   band: RfBand;
   rssi: number; // dBm (uncalibrated)
-  score: number; // dechirp peak-to-average (detection strength)
+  score: number; // detection strength = spectral peak over noise floor (dB)
+  peakDb: number; // narrowband peak excess over floor (dB)
+  offsetHz: number; // frequency offset of the peak from the band center
   bearing?: number; // only with a directional antenna
   timestamp: number;
 }
@@ -67,6 +70,22 @@ let client: RtlTcpClient | null = null;
 let connected = false;
 let scanning = false;
 let onDetect: ((d: RfLinkDetection) => void) | null = null;
+
+// App-wide observers (e.g. the map) + a rolling recent-detections buffer, so RF
+// hits surface beyond the RF tab's own scan callback.
+const rfListeners = new Set<(links: RfLinkDetection[]) => void>();
+let recentLinks: RfLinkDetection[] = [];
+const RF_RECENT_MS = 20000;
+export function subscribeRfLinks(cb: (links: RfLinkDetection[]) => void): () => void {
+  rfListeners.add(cb);
+  return () => {
+    rfListeners.delete(cb);
+  };
+}
+export function getRecentRfLinks(maxAgeMs = RF_RECENT_MS): RfLinkDetection[] {
+  const cutoff = Date.now() - maxAgeMs;
+  return recentLinks.filter((l) => l.timestamp >= cutoff);
+}
 
 let lastError: string | null = null;
 export function getRfLastError(): string | null {
@@ -156,8 +175,13 @@ async function scanLoop(): Promise<void> {
 }
 
 /**
- * Process one IQ baseband frame and emit a detection if a LoRa-style chirp is
- * present. Fully implemented + unit-tested (loraDetect); called by scanLoop with
+ * Process one IQ baseband frame and emit a detection if a control-link emission
+ * is present. PRIMARY detector is energy/peak-over-floor (detectEnergy) -- it
+ * catches real drone control links (FHSS ELRS/FrSky + telemetry) that a matched
+ * LoRa-chirp detector misses. The chirp detector (detectLora) then runs only to
+ * CLASSIFY a hit as LoRa CSS vs a generic control link. Validated on real drone,
+ * LoRa32, and noise captures (tools/rf_probe, test_energy): ~9 dB threshold gives
+ * 0% noise false-alarm and ~100% detection on real links. Called by scanLoop with
  * real IQ, and directly by tests.
  */
 export function processIqFrame(
@@ -166,15 +190,21 @@ export function processIqFrame(
   sampleRate: number,
   band: RfBand
 ): RfLinkDetection | null {
-  const d = detectLora(iqI, iqQ, sampleRate);
-  if (!d.present) return null;
+  const e = detectEnergy(iqI, iqQ, sampleRate);
+  if (!e.present) return null;
+  const chirp = detectLora(iqI, iqQ, sampleRate);
   const det: RfLinkDetection = {
-    kind: 'lora',
+    kind: chirp.present ? 'lora' : 'control-link',
     band,
-    rssi: Math.round(d.rssiDb),
-    score: Math.round(d.score),
+    rssi: Math.round(e.floorDb + e.peakDb), // approx emission level (uncalibrated)
+    score: Math.round(e.peakDb),
+    peakDb: Math.round(e.peakDb * 10) / 10,
+    offsetHz: Math.round(e.peakOffsetHz),
     timestamp: Date.now(),
   };
+  recentLinks = [det, ...recentLinks].slice(0, 50);
   onDetect?.(det);
+  const recent = getRecentRfLinks();
+  for (const cb of rfListeners) cb(recent);
   return det;
 }
