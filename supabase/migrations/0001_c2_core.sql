@@ -200,3 +200,13 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table detections;
 exception when duplicate_object then null; end $$;
+
+-- ---------------------------------------------------------------------------
+-- DEMO SEED (safe to delete): one test agency + a 25-seat deputy code so the
+-- app can enroll immediately. Deputies enroll in the app with code OCWS-DEMO-25.
+-- ---------------------------------------------------------------------------
+insert into orgs (name, slug) values ('OCWS Test Agency', 'ocws-test')
+  on conflict (slug) do nothing;
+insert into seat_codes (org_id, code, role, max_uses)
+  select id, 'OCWS-DEMO-25', 'deputy', 25 from orgs where slug = 'ocws-test'
+  on conflict (code) do nothing;

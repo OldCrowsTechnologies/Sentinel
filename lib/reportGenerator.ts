@@ -4,7 +4,7 @@
  * file URI so the UI can share/export it.
  */
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { Threat } from './threatTracker';
 
 export interface SessionReport {

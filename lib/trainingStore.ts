@@ -7,7 +7,7 @@
  * data/recordings/<class>/ for retraining.
  */
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { encodeWavBase64 } from './wavEncoder';
 

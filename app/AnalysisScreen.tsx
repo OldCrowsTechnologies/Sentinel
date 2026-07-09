@@ -9,7 +9,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { COLORS, FONTS, RADII } from '../lib/theme';
 import { AppHeader, MetricChip, Pill, PrimaryButton, IconButton, EmptyState } from './ui';

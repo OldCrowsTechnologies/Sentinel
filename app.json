@@ -73,7 +73,7 @@
       "@maplibre/maplibre-react-native",
       "expo-sqlite",
       "expo-font",
-      "./plugins/withFmtFix"
+      "expo-sharing"
     ],
     "extra": {
       "eas": {

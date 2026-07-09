@@ -15,10 +15,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-# Phone (name, width, thickness) in mm
+# Phone (name, width, thickness) in mm. For "cased" entries the width/thickness
+# are the OUTER dimensions of the phone WITH the case on, at the bottom ~35 mm.
 PHONES = [
     ("s24-ultra", "Galaxy S24 Ultra", 79.0, 8.6),
     ("s26-ultra", "Galaxy S26 Ultra", 78.1, 7.9),
+    # S26 Ultra inside a Pelican Protector-class case. ESTIMATE: bare 78.1 x 7.9
+    # + ~2.2 mm/side width + ~5 mm back protrusion. CALIPER-VERIFY the cased
+    # outer width/thickness at the bottom edge and update these two numbers.
+    ("s26-ultra-pelican", "S26 Ultra + Pelican Protector", 82.5, 13.0),
 ]
 
 # Nooelec NESDR Nano 3 (caliper-verify; specs conflict)

@@ -17,7 +17,7 @@
  * today (offline/standalone). Requires the native dev/standalone build.
  */
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { ContactReport } from './meshTypes';
 import type { GeoFix } from './locationService';
 

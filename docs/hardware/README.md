@@ -19,10 +19,14 @@ can't pry/snap the phone's USB-C port (the real failure mode).
 **Phone-specific "boot" mounts** (grip the bottom of the phone, SDR on the back):
 - **`corvus-mount-s24-ultra.stl`** + **`preview-s24-ultra.png`** — Galaxy S24 Ultra (79.0 × 8.6 mm grip).
 - **`corvus-mount-s26-ultra.stl`** + **`preview-s26-ultra.png`** — Galaxy S26 Ultra (78.1 × 7.9 mm grip).
-- **`make_phone_mounts.py`** — regenerates both STLs + previews.
-- IMPORTANT: cavities are sized for the **bare phone + 1.2 mm**. If you run a case,
-  add the case thickness to the dims in `make_phone_mounts.py` (or the grip won't fit).
-  **Print in TPU** so it flexes onto the phone without stressing the glass.
+- **`corvus-mount-s26-ultra-pelican.stl`** + **`preview-s26-ultra-pelican.png`** — S26 Ultra
+  **inside a Pelican Protector-class case** (82.5 × 13.0 mm cased grip, outer boot 89.7 × 20.2 × 34 mm).
+  The 82.5 × 13.0 is an **estimate** (bare + ~2.2 mm/side + ~5 mm back protrusion) — see below.
+- **`make_phone_mounts.py`** — regenerates all STLs + previews.
+- IMPORTANT: bare-phone cavities are sized for the **bare phone + 1.2 mm**. The Pelican
+  variant is sized for the **cased** outer dimensions. Either way, **caliper-measure**
+  your actual grip target and set the `(width, thickness)` in `PHONES` before a final print
+  (a 0.5 mm error is snug-vs-useless). **Print in TPU** so it flexes on without stressing anything.
 
 ## ⚠️ Verify the dongle size FIRST
 Published specs for the Nano 3 **conflict** (~17 mm vs ~25 mm body length). Before
