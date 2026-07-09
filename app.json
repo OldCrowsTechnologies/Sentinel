@@ -72,7 +72,8 @@
       "react-native-ble-plx",
       "@maplibre/maplibre-react-native",
       "expo-sqlite",
-      "expo-font"
+      "expo-font",
+      "./plugins/withFmtFix"
     ],
     "extra": {
       "eas": {
