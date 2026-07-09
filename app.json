@@ -73,7 +73,8 @@
       "@maplibre/maplibre-react-native",
       "expo-sqlite",
       "expo-font",
-      "expo-sharing"
+      "expo-sharing",
+      "./plugins/withoutPushEntitlement"
     ],
     "extra": {
       "eas": {
