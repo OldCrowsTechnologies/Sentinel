@@ -23,6 +23,10 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Corvus Sentinel requires microphone access to detect and classify aerial threats in real time.",
         "NSLocationWhenInUseUsageDescription": "Corvus Sentinel uses your location to stamp intercepts and support triangulation.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Corvus Sentinel uses your location while monitoring — including in the background — to stamp detections and share your position with command.",
+        "NSBluetoothAlwaysUsageDescription": "Corvus Sentinel uses Bluetooth to receive drone Remote ID broadcasts (the drone's and operator's position).",
+        "NSBluetoothPeripheralUsageDescription": "Corvus Sentinel uses Bluetooth to receive drone Remote ID broadcasts.",
+        "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "audio"
         ]
