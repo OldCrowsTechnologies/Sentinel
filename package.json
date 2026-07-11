@@ -13,6 +13,10 @@
     "train": "python3 training/train_corvus.py",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test \"tests/**/*.test.mjs\"",
+    "capture": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tools/rf_field.mjs",
+    "ingest": "node tools/audio_ingest.mjs",
+    "scan": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tools/rf_scan.mjs",
+    "console": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types tools/rf_console.mjs",
     "stress": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types stress/index.mjs",
     "stress:soak": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --expose-gc --experimental-strip-types stress/index.mjs soak"
   },

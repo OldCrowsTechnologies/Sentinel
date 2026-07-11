@@ -42,6 +42,7 @@ Reported when no specific model confidently matches.
 | **FPV racer** | 5–6″ props, very high RPM, aggressive throttle AM |
 | **Fixed-wing UAS** | single steady prop, clean harmonic stack |
 | **Combustion UAS** | LOW engine firing (~40–130 Hz) + many harmonics — **one-way-attack / Shahed-class** |
+| **RC helicopter** | single main-rotor blade-pass + tail-rotor whine; distinct from multirotor (many fast props) and from crewed **Manned rotorcraft** (turbine, much lower). Model/hobby heli — a UAS category, not a crewed aircraft. Real-data-only. |
 
 ### Specific models — brand ID (acoustic best-effort; RID authoritative)
 `Skydio X2`, `DJI Phantom`, `Parrot Anafi`, `Potensic Atom 2`, `DJI Mini 3 Pro`,
@@ -71,7 +72,7 @@ model JSON, so parity holds without a `dsp.ts` code change.
 ## Open-set grouping (exported by `train_corvus.build_open_set`)
 
 - `nonThreatIndices` — None, Bird, Manned rotorcraft, Manned fixed-wing.
-- `categoryIndices` — the six UAS categories (the acoustic-type fallback).
+- `categoryIndices` — the seven UAS categories (the acoustic-type fallback).
 - `specificDroneIndices` — the model leaves (brand match + OOD novelty distance).
 - `threatIndices` — everything that isn't a non-threat.
 

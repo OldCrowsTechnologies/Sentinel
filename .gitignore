@@ -15,6 +15,14 @@ training/__pycache__/
 # Training audio is versioned via Git LFS (see .gitattributes) -- keeps the WAVs
 # in the repo without bloating clones or EAS build uploads (builds get pointers,
 # and .easignore drops data/ from the archive anyway).
+# RF capture corpus: raw IQ is large + binary. Keep the .iq8 out of git, but
+# version the self-describing .json sidecars + README so the corpus is documented.
+captures/**/*.iq8
+
+# Windows rtl-sdr binaries (rtl_tcp.exe + DLLs) — vendored locally for field
+# capture convenience; not source, don't bloat the repo.
+tools/rtlsdr-win/
+
 # Model/branding backups
 *.BACKUP*.json
 assets/branding/*_original_backup*

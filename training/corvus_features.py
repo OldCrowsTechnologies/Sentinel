@@ -96,20 +96,20 @@ FEATURE_DIM = 2 * N_MELS + N_BAND_RATIOS
 # + train_corvus.build_open_set):
 #   NON-THREAT (called out, never alarmed): None, Bird, Manned rotorcraft, Manned fixed-wing
 #   UAS CATEGORIES (the "every type" coverage): Small/Medium/Large multirotor,
-#                    FPV racer, Fixed-wing UAS, Combustion UAS
+#                    FPV racer, Fixed-wing UAS, Combustion UAS, RC helicopter
 #   SPECIFIC MODELS (acoustic best-effort; RID authoritative): Skydio X2, DJI
 #                    Phantom, Parrot Anafi, Potensic Atom 2, DJI Mini 3/5 Pro,
-#                    DJI FPV, DJI Mavic 3, Yuneec
+#                    DJI FPV, DJI Avata 2, DJI Mavic 3, Yuneec
 #   OPEN-SET CATCH-ALL: Unknown
 LABELS = [
     # Non-threat
     "None", "Bird", "Manned rotorcraft", "Manned fixed-wing",
     # UAS acoustic categories
     "Small multirotor", "Medium multirotor", "Large multirotor",
-    "FPV racer", "Fixed-wing UAS", "Combustion UAS",
+    "FPV racer", "Fixed-wing UAS", "Combustion UAS", "RC helicopter",
     # Specific models
     "Skydio X2", "DJI Phantom", "Parrot Anafi", "Potensic Atom 2",
-    "DJI Mini 3 Pro", "DJI Mini 5 Pro", "DJI FPV", "DJI Mavic 3", "Yuneec",
+    "DJI Mini 3 Pro", "DJI Mini 5 Pro", "DJI FPV", "DJI Avata 2", "DJI Mavic 3", "Yuneec",
     # Open-set catch-all
     "Unknown",
 ]

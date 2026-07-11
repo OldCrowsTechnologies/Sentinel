@@ -167,7 +167,7 @@ def featurize(waves):
 # non-None/non-Unknown is a specific MODEL leaf (brand ID, best-effort by ear).
 NON_THREAT_LABELS = {"None", "Bird", "Manned rotorcraft", "Manned fixed-wing"}
 CATEGORY_LABELS = {"Small multirotor", "Medium multirotor", "Large multirotor",
-                   "FPV racer", "Fixed-wing UAS", "Combustion UAS"}
+                   "FPV racer", "Fixed-wing UAS", "Combustion UAS", "RC helicopter"}
 
 
 def build_open_set(Xs, y, active_labels):
