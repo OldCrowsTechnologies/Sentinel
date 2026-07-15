@@ -22,6 +22,8 @@
   .chip{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
   .chip b{color:var(--ink)}
   #expiry.warn{color:var(--amber);border-color:var(--amber)}
+  .fitbtn{font-size:12px;font-weight:600;color:#04201d;background:var(--teal);border:0;border-radius:20px;padding:6px 14px;cursor:pointer}
+  .fitbtn:hover{filter:brightness(1.08)}
   #map{position:relative}
   aside{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
   aside h2{margin:0;padding:12px 14px;font-size:12px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;border-bottom:1px solid var(--line)}
@@ -79,6 +81,7 @@
     <span class="chip" id="fleet">0 units</span>
     <span class="chip" id="dets">0 detections</span>
     <span class="chip" id="expiry">demo —</span>
+    <button class="fitbtn" id="fit" title="Zoom to frame all active units">Fit to units</button>
   </header>
   <div id="map">
     <div class="badge">Fused tracks: <b id="trackcount">0</b> · ≥3 units needed for a fix</div>
@@ -100,8 +103,8 @@ import maplibregl from 'https://esm.sh/maplibre-gl@4.7.1';
 const CONFIG = {
   SUPABASE_URL:  window.CORVUS_SUPABASE_URL  || 'https://llduasjyqprkmpjotgfu.supabase.co',
   SUPABASE_ANON: window.CORVUS_SUPABASE_ANON || 'sb_publishable_T6jfcmv0R_uhJ1CV3Yj6EA_bplZfB8x',
-  // Pensacola Beach (Blue Angels box) default view
-  CENTER: [-87.16, 30.33], ZOOM: 13,
+  // Default to a Pensacola/Escambia-County view; "Fit to units" frames the fleet.
+  CENTER: [-87.24, 30.45], ZOOM: 10,
 };
 // Deploy fills the placeholders. Until then, fall back to any values saved from a
 // previous session (never a blocking prompt — that freezes a kiosk/C2 screen).
@@ -149,6 +152,14 @@ const csFor=d=>{const p=positions.get(d.user_id);return (p&&p.call_sign)||d.call
 const $=id=>document.getElementById(id);
 $('go').onclick=connect;
 $('code').addEventListener('keydown',e=>{if(e.key==='Enter')connect();});
+$('fit').onclick=()=>{
+  if(!map) return;
+  const pts=[...positions.values()].filter(p=>p.lat!=null);
+  if(!pts.length) return; // nothing to frame yet
+  const b=new maplibregl.LngLatBounds();
+  pts.forEach(p=>b.extend([p.lon,p.lat]));
+  map.fitBounds(b,{padding:90,maxZoom:15,duration:600});
+};
 async function connect(){
   const code=$('code').value.trim(); const cs=$('callsign').value.trim();
   if(!code){$('err').textContent='Enter your command code.';return;}
@@ -199,7 +210,8 @@ function onDetection(d,silent){
 function initMap(){
   if(map) return;
   map=new maplibregl.Map({container:'map',center:CONFIG.CENTER,zoom:CONFIG.ZOOM,
-    style:{version:8,sources:{osm:{type:'raster',tiles:['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png','https://b.tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap'}},
+    style:{version:8,glyphs:'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
+      sources:{osm:{type:'raster',tiles:['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png','https://b.tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap'}},
       layers:[{id:'osm',type:'raster',source:'osm'},{id:'dim',type:'background',paint:{'background-color':'#0a0e14','background-opacity':0.35}}]}});
   map.addControl(new maplibregl.NavigationControl(),'bottom-right');
   map.on('load',()=>{
@@ -211,7 +223,7 @@ function initMap(){
     map.addLayer({id:'track-fill',type:'fill',source:'tracks',paint:{'fill-color':'#e0b64a','fill-opacity':0.18}});
     map.addLayer({id:'track-line',type:'line',source:'tracks',paint:{'line-color':'#e0b64a','line-width':2}});
     map.addLayer({id:'units',type:'circle',source:'units',paint:{'circle-radius':7,'circle-color':'#2fd6c4','circle-stroke-color':'#04201d','circle-stroke-width':2}});
-    map.addLayer({id:'unit-lbl',type:'symbol',source:'units',layout:{'text-field':['get','cs'],'text-offset':[0,1.2],'text-size':11},paint:{'text-color':'#8aa0b6'}});
+    map.addLayer({id:'unit-lbl',type:'symbol',source:'units',layout:{'text-field':['get','cs'],'text-font':['Open Sans Regular'],'text-offset':[0,1.2],'text-size':11},paint:{'text-color':'#cfe0ee','text-halo-color':'#04121e','text-halo-width':1.2}});
     map.addLayer({id:'dets',type:'circle',source:'dets',paint:{'circle-radius':6,'circle-color':['case',['get','unknown'],'#ffb020','#e0b64a'],'circle-stroke-color':'#1a1207','circle-stroke-width':2}});
     map.on('click','dets',e=>{const p=e.features[0].properties;new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>${p.label}</b><br>${Math.round(p.conf)}% · ~${Math.round(p.range)} ft<br>${p.cs||''}`).addTo(map);});
     redraw();
