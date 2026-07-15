@@ -16,9 +16,20 @@ dedicated **fixed mics in schools / county buildings** and/or unit-mounted mics.
 (Detection needs MICROPHONES; external *speakers* on units are an optional
 warning/deterrence **output**, not part of detection.)
 
+**END GOAL: runs through the SAME C2 as drone detection.** This is the key architectural
+decision. The C2 already carries a *generic* detection: the `detections` table + the
+`ContactReport` type both have a **`kind`** field (today: acoustic / rid / lora / wifi). A
+gunshot is just **`kind = 'gunshot'`** with the weapon class in `label`, energy in `peak_db`,
+and lat/lon/range like any other contact. So a gunshot event flows into the **same map, log,
+instant alerting, per-agency isolation, and (with joint-ops) mutual aid** with only a small
+schema/UI addition — NOT a second system. One command picture: drones + gunshots + whatever
+comes next. That unified pane is the product moat.
+
 **What Sentinel already gives for free (the head start):**
 - **C2 tier** (cloudSync + Supabase + realtime + dashboard): instant alerting, live map,
   per-agency isolation — reusable as-is. The "faster than 911" alert path already exists.
+  Gunshot events reuse it via the `kind` field (above); dashboard adds a gunshot marker/alert
+  style + a "shots fired" banner.
 - **On-device ML + DSP + training pipeline** (`mlClassifier`, `dsp`, `train_corvus`): the
   scaffolding retargets from drone rotor signatures to gunshot signatures.
 - **Multilateration/fusion engine** (`meshFusion`): reusable solver that already
