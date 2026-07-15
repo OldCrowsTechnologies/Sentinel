@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Corvus Sentinel — C2</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#0f1620; --panel2:#131d2a; --line:#1e2c3d;
+    --ink:#e8eef5; --dim:#8aa0b6; --teal:#2fd6c4; --gold:#e0b64a; --red:#ff5a5a; --amber:#ffb020;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--font)}
+  #app{display:grid;grid-template-columns:1fr 380px;grid-template-rows:52px 1fr;height:100vh}
+  header{grid-column:1/3;display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header .brand{font-weight:700;letter-spacing:.5px}
+  header .brand b{color:var(--teal)}
+  header .spacer{flex:1}
+  .chip{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
+  .chip b{color:var(--ink)}
+  #expiry.warn{color:var(--amber);border-color:var(--amber)}
+  #map{position:relative}
+  aside{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  aside h2{margin:0;padding:12px 14px;font-size:12px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;border-bottom:1px solid var(--line)}
+  .roster{padding:8px 14px;border-bottom:1px solid var(--line);max-height:160px;overflow:auto}
+  .roster .u{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--teal);flex:none}
+  .dot.stale{background:#54627a}
+  .log{flex:1;overflow:auto;min-height:0}
+  .row{display:grid;grid-template-columns:56px 1fr auto;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:13px}
+  .row .t{color:var(--dim);font-family:var(--mono);font-size:11px}
+  .row .lbl{font-weight:600}
+  .row .lbl.threat{color:var(--gold)}
+  .row .lbl.unknown{color:var(--amber)}
+  .row .meta{color:var(--dim);font-size:11px}
+  .row .cf{font-family:var(--mono);color:var(--dim);text-align:right}
+  /* login */
+  #login{position:fixed;inset:0;background:radial-gradient(1200px 600px at 70% -10%, #10202b, var(--bg));display:flex;align-items:center;justify-content:center;z-index:50}
+  .card{width:380px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px}
+  .card .k{font-size:12px;letter-spacing:2px;color:var(--teal);text-transform:uppercase}
+  .card h1{margin:6px 0 2px;font-size:26px}
+  .card p{color:var(--dim);font-size:13px;margin:0 0 18px}
+  label{display:block;font-size:12px;color:var(--dim);margin:12px 0 6px}
+  input{width:100%;padding:11px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:15px;font-family:var(--mono);letter-spacing:1px}
+  button{margin-top:18px;width:100%;padding:12px;background:var(--teal);color:#04201d;border:0;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  .err{color:var(--red);font-size:13px;margin-top:12px;min-height:16px}
+  .foot{margin-top:16px;font-size:11px;color:var(--dim);text-align:center}
+  .maplibregl-popup-content{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;font-size:12px}
+  .maplibregl-popup-tip{border-top-color:var(--panel2)!important;border-bottom-color:var(--panel2)!important}
+  .badge{position:absolute;top:10px;left:10px;z-index:5;background:rgba(15,22,32,.85);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--dim)}
+  .badge b{color:var(--teal)}
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="card">
+    <div class="k">Old Crows Wireless</div>
+    <h1>Corvus Sentinel <span style="color:var(--teal)">C2</span></h1>
+    <p>Command &amp; control — enter your agency command code to view the live fleet.</p>
+    <label>Command code</label>
+    <input id="code" placeholder="ECSO-BA-CMD" autocomplete="off" autocapitalize="characters" />
+    <label>Your call sign (optional)</label>
+    <input id="callsign" placeholder="C2-ACTUAL" autocomplete="off" />
+    <button id="go">Connect to fleet</button>
+    <div class="err" id="err"></div>
+    <div class="foot">Offline-capable early-warning network · Proprietary &amp; Confidential</div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <div class="brand">CORVUS <b>SENTINEL</b> · C2</div>
+    <span class="chip" id="org">—</span>
+    <div class="spacer"></div>
+    <span class="chip" id="fleet">0 units</span>
+    <span class="chip" id="dets">0 detections</span>
+    <span class="chip" id="expiry">demo —</span>
+  </header>
+  <div id="map">
+    <div class="badge">Fused tracks: <b id="trackcount">0</b> · ≥3 units needed for a fix</div>
+  </div>
+  <aside>
+    <h2>Units on scene</h2>
+    <div class="roster" id="roster"><div class="meta" style="color:var(--dim);font-size:12px">Waiting for units…</div></div>
+    <h2>Live detections</h2>
+    <div class="log" id="log"></div>
+  </aside>
+</div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import maplibregl from 'https://esm.sh/maplibre-gl@4.7.1';
+
+// ── CONFIG ────────────────────────────────────────────────────────────────
+// Filled at deploy time. If blank, the page prompts so it stays testable.
+const CONFIG = {
+  SUPABASE_URL:  window.CORVUS_SUPABASE_URL  || 'https://llduasjyqprkmpjotgfu.supabase.co',
+  SUPABASE_ANON: window.CORVUS_SUPABASE_ANON || 'sb_publishable_T6jfcmv0R_uhJ1CV3Yj6EA_bplZfB8x',
+  // Pensacola Beach (Blue Angels box) default view
+  CENTER: [-87.16, 30.33], ZOOM: 13,
+};
+// Deploy fills the placeholders. Until then, fall back to any values saved from a
+// previous session (never a blocking prompt — that freezes a kiosk/C2 screen).
+if (CONFIG.SUPABASE_URL.startsWith('__')) {
+  CONFIG.SUPABASE_URL  = localStorage.getItem('corvus_url')  || '';
+  CONFIG.SUPABASE_ANON = localStorage.getItem('corvus_anon') || '';
+}
+if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) {
+  document.getElementById('err').textContent =
+    'Backend not configured. Set SUPABASE_URL / anon key at deploy (see c2-dashboard/README).';
+  document.getElementById('go').disabled = true;
+}
+const supa = (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON)
+  ? createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { persistSession: true } })
+  : null;
+
+// ── fusion (ported from lib/meshFusion.ts — range-only multilateration) ─────
+const FT_M=0.3048, ER=6378137, REL_SD=0.3, MIN_SD=15, GRID=21, ITERS=12, DAMP=1e-6;
+const d2r=d=>d*Math.PI/180, r2d=r=>r*180/Math.PI;
+const toLocal=(la,lo,la0,lo0)=>({x:d2r(lo-lo0)*Math.cos(d2r(la0))*ER, y:d2r(la-la0)*ER});
+const toLL=(la0,lo0,x,y)=>({lat:la0+r2d(y/ER), lon:lo0+r2d(x/(ER*Math.cos(d2r(la0))))});
+function cost(ns,px,py){let c=0;for(const n of ns){const d=Math.hypot(px-n.x,py-n.y),e=d-n.r;c+=n.w*e*e;}return c;}
+function seed(ns){let a=1/0,b=-1/0,c=1/0,d=-1/0,mr=0;for(const n of ns){a=Math.min(a,n.x);b=Math.max(b,n.x);c=Math.min(c,n.y);d=Math.max(d,n.y);mr=Math.max(mr,n.r);}a-=mr;b+=mr;c-=mr;d+=mr;let best={x:(a+b)/2,y:(c+d)/2},bc=1/0;for(let i=0;i<GRID;i++){const px=a+(b-a)*i/(GRID-1);for(let j=0;j<GRID;j++){const py=c+(d-c)*j/(GRID-1),cc=cost(ns,px,py);if(cc<bc){bc=cc;best={x:px,y:py};}}}return best;}
+function solve(ns){let{x,y}=seed(ns),H11=0,H12=0,H22=0;for(let it=0;it<ITERS;it++){H11=H12=H22=0;let g1=0,g2=0;for(const n of ns){const dx=x-n.x,dy=y-n.y,dd=Math.hypot(dx,dy)||1e-6,jx=dx/dd,jy=dy/dd,f=dd-n.r;H11+=n.w*jx*jx;H12+=n.w*jx*jy;H22+=n.w*jy*jy;g1+=n.w*jx*f;g2+=n.w*jy*f;}const dp=DAMP*(H11+H22+1e-9),A=H11+dp,C=H22+dp,B=H12,det=A*C-B*B;if(!isFinite(det)||Math.abs(det)<1e-12)break;const dx=-(C*g1-B*g2)/det,dy=-(A*g2-B*g1)/det;x+=dx;y+=dy;if(Math.hypot(dx,dy)<1e-4)break;}const det=H11*H22-H12*H12;if(!isFinite(det)||Math.abs(det)<1e-12)return{x,y,cov:[1/0,0,1/0],ok:false};return{x,y,cov:[H22/det,-H12/det,H11/det],ok:true};}
+function ellipse(cov){const[cxx,cxy,cyy]=cov,tr=(cxx+cyy)/2,df=Math.sqrt(((cxx-cyy)/2)**2+cxy*cxy),l1=tr+df,l2=tr-df;const a=Math.sqrt(Math.max(l1,0)),b=Math.sqrt(Math.max(l2,0));let ang=90-r2d(0.5*Math.atan2(2*cxy,cxx-cyy));ang=((ang%360)+360)%360;return{a,b,ang};}
+function fuse(byNode){ // byNode: Map nodeId -> latest detection row (same type)
+  const rep=[...byNode.values()].filter(r=>r.lat!=null&&r.lon!=null);
+  if(rep.length<3) return {fix:null, n:rep.length};
+  const la0=rep.reduce((s,r)=>s+r.lat,0)/rep.length, lo0=rep.reduce((s,r)=>s+r.lon,0)/rep.length;
+  const ns=rep.map(r=>{const{x,y}=toLocal(r.lat,r.lon,la0,lo0);const rM=(r.range_ft||0)*FT_M;const sd=Math.max(REL_SD*rM,MIN_SD);return{x,y,r:rM,w:Math.max(r.confidence||1,1)/100/(sd*sd)};});
+  const s=solve(ns); const{lat,lon}=toLL(la0,lo0,s.x,s.y); const el=ellipse(s.cov);
+  return {fix:{lat,lon,el}, n:rep.length};
+}
+function ellipsePoly(lat,lon,el,pts=48){const th=d2r(90-el.ang),ct=Math.cos(th),st=Math.sin(th),ring=[];for(let i=0;i<=pts;i++){const t=2*Math.PI*i/pts,ex=el.a*Math.cos(t),ey=el.b*Math.sin(t),x=ex*ct-ey*st,y=ex*st+ey*ct,p=toLL(lat,lon,x,y);ring.push([p.lon,p.lat]);}return ring;}
+
+// ── state ───────────────────────────────────────────────────────────────────
+const NON_THREAT=new Set(['None','Bird','Manned rotorcraft','Manned fixed-wing']);
+const positions=new Map();       // user_id -> position row (carries call_sign)
+const detsByNodeType=new Map();  // `${node}|${type}` -> latest detection
+let orgId=null, map=null, unsub=null;
+// Detections aren't tagged with a call sign — resolve it from the unit's position.
+const csFor=d=>{const p=positions.get(d.user_id);return (p&&p.call_sign)||d.call_sign||d.node_id||'unit';};
+
+// ── login ───────────────────────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+$('go').onclick=connect;
+$('code').addEventListener('keydown',e=>{if(e.key==='Enter')connect();});
+async function connect(){
+  const code=$('code').value.trim(); const cs=$('callsign').value.trim();
+  if(!code){$('err').textContent='Enter your command code.';return;}
+  $('go').disabled=true; $('err').textContent='';
+  try{
+    let { data:sess } = await supa.auth.getSession();
+    if(!sess?.session){ const {error}=await supa.auth.signInAnonymously(); if(error) throw error; }
+    const { data:org, error } = await supa.rpc('redeem_seat_code',{p_code:code,p_call_sign:cs||null});
+    if(error) throw error;
+    orgId=org;
+    await start();
+    $('login').style.display='none'; $('app').style.display='grid';
+  }catch(e){ $('err').textContent=e.message||'Could not connect.'; $('go').disabled=false; }
+}
+
+// ── live fleet ──────────────────────────────────────────────────────────────
+async function start(){
+  const { data:o } = await supa.from('orgs').select('name,expires_at').eq('id',orgId).single();
+  if(o){ $('org').innerHTML='<b>'+o.name+'</b>'; showExpiry(o.expires_at); }
+  initMap();
+  // snapshot
+  const { data:pos } = await supa.from('positions').select('*'); (pos||[]).forEach(onPosition);
+  const { data:det } = await supa.from('detections').select('*').order('ts',{ascending:false}).limit(200);
+  (det||[]).reverse().forEach(d=>onDetection(d,true));
+  redraw();
+  // realtime
+  const ch=supa.channel('fleet')
+    .on('postgres_changes',{event:'*',schema:'public',table:'positions'},p=>{onPosition(p.new);redraw();})
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'detections'},p=>{onDetection(p.new);redraw();})
+    .subscribe();
+  unsub=()=>supa.removeChannel(ch);
+}
+function showExpiry(exp){
+  if(!exp){ $('expiry').textContent='live'; return; }
+  const days=Math.max(0,Math.ceil((new Date(exp)-Date.now())/86400000));
+  const el=$('expiry'); el.textContent='demo ends in '+days+'d';
+  if(days<=5) el.classList.add('warn');
+}
+function onPosition(p){ if(p&&p.user_id) positions.set(p.user_id,p); }
+function onDetection(d,silent){
+  if(!d) return;
+  if(!NON_THREAT.has(d.label)) detsByNodeType.set((d.node_id||d.user_id)+'|'+d.label,d);
+  addLog(d); if(!silent) flash(d);
+  $('dets').textContent=($('log').childElementCount)+' detections';
+}
+
+// ── map ─────────────────────────────────────────────────────────────────────
+function initMap(){
+  if(map) return;
+  map=new maplibregl.Map({container:'map',center:CONFIG.CENTER,zoom:CONFIG.ZOOM,
+    style:{version:8,sources:{osm:{type:'raster',tiles:['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png','https://b.tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap'}},
+      layers:[{id:'osm',type:'raster',source:'osm'},{id:'dim',type:'background',paint:{'background-color':'#0a0e14','background-opacity':0.35}}]}});
+  map.addControl(new maplibregl.NavigationControl(),'bottom-right');
+  map.on('load',()=>{
+    map.addSource('units',{type:'geojson',data:fc([])});
+    map.addSource('dets',{type:'geojson',data:fc([])});
+    map.addSource('rings',{type:'geojson',data:fc([])});
+    map.addSource('tracks',{type:'geojson',data:fc([])});
+    map.addLayer({id:'rings',type:'line',source:'rings',paint:{'line-color':'#2fd6c4','line-opacity':0.35,'line-dasharray':[2,2]}});
+    map.addLayer({id:'track-fill',type:'fill',source:'tracks',paint:{'fill-color':'#e0b64a','fill-opacity':0.18}});
+    map.addLayer({id:'track-line',type:'line',source:'tracks',paint:{'line-color':'#e0b64a','line-width':2}});
+    map.addLayer({id:'units',type:'circle',source:'units',paint:{'circle-radius':7,'circle-color':'#2fd6c4','circle-stroke-color':'#04201d','circle-stroke-width':2}});
+    map.addLayer({id:'unit-lbl',type:'symbol',source:'units',layout:{'text-field':['get','cs'],'text-offset':[0,1.2],'text-size':11},paint:{'text-color':'#8aa0b6'}});
+    map.addLayer({id:'dets',type:'circle',source:'dets',paint:{'circle-radius':6,'circle-color':['case',['get','unknown'],'#ffb020','#e0b64a'],'circle-stroke-color':'#1a1207','circle-stroke-width':2}});
+    map.on('click','dets',e=>{const p=e.features[0].properties;new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>${p.label}</b><br>${Math.round(p.conf)}% · ~${Math.round(p.range)} ft<br>${p.cs||''}`).addTo(map);});
+    redraw();
+  });
+}
+const fc=f=>({type:'FeatureCollection',features:f});
+const pt=(lon,lat,props)=>({type:'Feature',geometry:{type:'Point',coordinates:[lon,lat]},properties:props});
+function ringPoly(lat,lon,ft){const m=ft*FT_M,r=[];for(let i=0;i<=40;i++){const t=2*Math.PI*i/40,p=toLL(lat,lon,m*Math.cos(t),m*Math.sin(t));r.push([p.lon,p.lat]);}return {type:'Feature',geometry:{type:'Polygon',coordinates:[r]},properties:{}};}
+function redraw(){
+  if(!map||!map.getSource) return;
+  const us=map.getSource('units'); if(!us) return;
+  // units
+  const now=Date.now();
+  us.setData(fc([...positions.values()].filter(p=>p.lat!=null).map(p=>pt(p.lon,p.lat,{cs:p.call_sign||'unit'}))));
+  $('fleet').textContent=positions.size+' units';
+  renderRoster(now);
+  // recent detections (last 90s) → markers + range rings
+  const recent=[...detsByNodeType.values()].filter(d=>now-new Date(d.ts).getTime()<90000);
+  map.getSource('dets').setData(fc(recent.filter(d=>d.lat!=null).map(d=>pt(d.lon,d.lat,{label:d.label,conf:d.confidence,range:d.range_ft,unknown:!!d.unknown_build,cs:csFor(d)}))));
+  map.getSource('rings').setData(fc(recent.filter(d=>d.lat!=null&&d.range_ft>0).map(d=>ringPoly(d.lat,d.lon,d.range_ft))));
+  // fuse per type
+  const byType=new Map();
+  for(const d of recent){ const k=d.label; if(!byType.has(k))byType.set(k,new Map()); byType.get(k).set(d.node_id||d.user_id,d); }
+  const polys=[]; let nTracks=0;
+  for(const [type,byNode] of byType){ const {fix}=fuse(byNode); if(fix){ nTracks++; polys.push({type:'Feature',geometry:{type:'Polygon',coordinates:[ellipsePoly(fix.lat,fix.lon,fix.el)]},properties:{type}}); } }
+  map.getSource('tracks').setData(fc(polys));
+  $('trackcount').textContent=nTracks;
+}
+function renderRoster(now){
+  const r=$('roster'); if(!positions.size){r.innerHTML='<div class="meta" style="font-size:12px">Waiting for units…</div>';return;}
+  r.innerHTML=[...positions.values()].map(p=>{const stale=now-new Date(p.ts).getTime()>30000;return `<div class="u"><span class="dot ${stale?'stale':''}"></span>${p.call_sign||'unit'} <span class="meta" style="margin-left:auto">${p.lat!=null?p.lat.toFixed(4)+','+p.lon.toFixed(4):'no GPS'}</span></div>`;}).join('');
+}
+
+// ── log ─────────────────────────────────────────────────────────────────────
+function addLog(d){
+  const log=$('log'); const row=document.createElement('div'); row.className='row';
+  const threat=!NON_THREAT.has(d.label); const cls=d.unknown_build?'unknown':(threat?'threat':'');
+  const t=new Date(d.ts||Date.now()); const hh=t.toLocaleTimeString([],{hour12:false});
+  row.innerHTML=`<span class="t">${hh}</span>
+    <span><span class="lbl ${cls}">${d.label}${d.unknown_build?' ⚠':''}</span>
+    <div class="meta">${csFor(d)} · ~${Math.round(d.range_ft||0)} ft${d.kind&&d.kind!=='acoustic'?' · '+d.kind:''}</div></span>
+    <span class="cf">${Math.round(d.confidence||0)}%</span>`;
+  log.prepend(row);
+  while(log.childElementCount>300) log.lastChild.remove();
+}
+function flash(d){ /* hook for sound/alert on new threat */ }
+</script>
+</body>
+</html>

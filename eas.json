@@ -17,6 +17,16 @@
         "buildType": "apk"
       }
     },
+    "demo": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://llduasjyqprkmpjotgfu.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_T6jfcmv0R_uhJ1CV3Yj6EA_bplZfB8x"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "android": {

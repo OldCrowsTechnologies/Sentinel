@@ -65,6 +65,8 @@ const fileStorage = {
 let supa: any = null;
 let userId: string | null = null;
 let orgId: string | null = null;
+let orgName: string | null = null;
+let callSign: string | null = null; // this device's unit label, shown in C2
 
 function loadClient(): any {
   if (supa || !cloudConfigured()) return supa;
@@ -87,8 +89,14 @@ export async function initCloud(): Promise<string | null> {
   const { data } = await c.auth.getSession();
   if (!data?.session) return null;
   userId = data.session.user?.id ?? null;
-  const { data: rows } = await c.from('org_members').select('org_id').eq('active', true).limit(1);
+  callSign = await fileStorage.getItem('call_sign');
+  const { data: rows } = await c.from('org_members').select('org_id, call_sign').eq('active', true).limit(1);
   orgId = rows?.[0]?.org_id ?? null;
+  if (!callSign && rows?.[0]?.call_sign) callSign = rows[0].call_sign;
+  if (orgId) {
+    const { data: o } = await c.from('orgs').select('name').eq('id', orgId).single();
+    orgName = o?.name ?? null;
+  }
   return orgId;
 }
 
@@ -99,8 +107,11 @@ export function currentOrg(): string | null {
   return orgId;
 }
 
-/** Enroll this device with an agency seat code (one-time). */
-export async function enrollWithCode(code: string, callSign?: string): Promise<{ orgId: string }> {
+/** Enroll this device with an agency seat code + call sign (one-time). */
+export async function enrollWithCode(
+  code: string,
+  cs?: string
+): Promise<{ orgId: string; orgName: string | null; callSign: string | null }> {
   const c = loadClient();
   if (!c) throw new Error('cloud not configured');
   const sess = await c.auth.getSession();
@@ -110,20 +121,46 @@ export async function enrollWithCode(code: string, callSign?: string): Promise<{
   }
   const who = await c.auth.getUser();
   userId = who.data?.user?.id ?? null;
-  const { data, error } = await c.rpc('redeem_seat_code', { p_code: code.trim(), p_call_sign: callSign ?? null });
+  const trimmed = cs?.trim() || null;
+  const { data, error } = await c.rpc('redeem_seat_code', { p_code: code.trim(), p_call_sign: trimmed });
   if (error) throw error;
   orgId = data as string;
-  return { orgId: orgId! };
+  if (trimmed) {
+    callSign = trimmed;
+    await fileStorage.setItem('call_sign', trimmed);
+  }
+  const { data: o } = await c.from('orgs').select('name').eq('id', orgId).single();
+  orgName = o?.name ?? null;
+  return { orgId: orgId!, orgName, callSign };
+}
+
+/** Snapshot of C2 link state for the Settings UI. */
+export function getEnrollment(): {
+  configured: boolean;
+  enrolled: boolean;
+  orgId: string | null;
+  orgName: string | null;
+  callSign: string | null;
+} {
+  return { configured: cloudConfigured(), enrolled: isEnrolled(), orgId, orgName, callSign };
+}
+
+/** Unlink this device from C2 (demo re-enroll / hand-off to another agency). */
+export async function signOutCloud(): Promise<void> {
+  const c = loadClient();
+  if (c) { try { await c.auth.signOut(); } catch { /* already gone */ } }
+  userId = orgId = orgName = callSign = null;
+  await fileStorage.removeItem('call_sign');
 }
 
 /** Upsert this deputy's live position. No-op until enrolled. */
-export async function pushPosition(fix: GeoFix, callSign?: string): Promise<void> {
+export async function pushPosition(fix: GeoFix, cs?: string): Promise<void> {
   const c = loadClient();
   if (!c || !orgId || !userId) return;
   await c.from('positions').upsert({
     user_id: userId,
     org_id: orgId,
-    call_sign: callSign ?? null,
+    call_sign: cs ?? callSign ?? null,
     lat: fix.lat,
     lon: fix.lon,
     accuracy_m: fix.accuracy ?? null,
