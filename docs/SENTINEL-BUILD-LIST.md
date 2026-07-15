@@ -5,7 +5,65 @@ the top. Each item: what it is, why, the approach, and rough effort.
 
 ---
 
-## 1. Multi-agency joint operations / geofenced mutual aid
+## 1. Gunshot detection & localization (acoustic) — likely separate product/contract
+
+**Status:** planned (post-demo). **Highly requested by ECSO; life-safety.**
+
+**Concept.** Reuse the Sentinel acoustic + C2 + fusion platform to detect gunfire, push
+an **instant C2 alert (faster than a 911 call)**, classify weapon type (rifle / handgun
+/ shotgun), and — with multiple sensors — **triangulate the shot location**. Sensors:
+dedicated **fixed mics in schools / county buildings** and/or unit-mounted mics.
+(Detection needs MICROPHONES; external *speakers* on units are an optional
+warning/deterrence **output**, not part of detection.)
+
+**What Sentinel already gives for free (the head start):**
+- **C2 tier** (cloudSync + Supabase + realtime + dashboard): instant alerting, live map,
+  per-agency isolation — reusable as-is. The "faster than 911" alert path already exists.
+- **On-device ML + DSP + training pipeline** (`mlClassifier`, `dsp`, `train_corvus`): the
+  scaffolding retargets from drone rotor signatures to gunshot signatures.
+- **Multilateration/fusion engine** (`meshFusion`): reusable solver that already
+  anticipates TDOA terms ("same solver, different rows").
+
+**The hard parts (honest — this is its own product, not a bolt-on):**
+1. **Impulse capture.** Gunshots are ~1–3 ms, 140–165 dB transients. Phone mics AGC/clip
+   and sample at 16 kHz — inadequate. Needs higher sample rate + high-SPL-capable mics →
+   favors **dedicated fixed sensors** over phones.
+2. **Low false positives.** Gunshot vs firework vs backfire vs door-slam is the domain's
+   Achilles heel (cf. ShotSpotter controversy). Needs a large labeled corpus of real
+   gunfire + confounders. Detection is achievable; low-enough FP for life-safety is the work.
+3. **Weapon-ID limits.** Rifle / handgun / shotgun is plausible (muzzle energy + supersonic
+   shockwave). **Exact caliber is research-grade — do NOT headline it.** Sell "class +
+   confidence," not "it's a .223."
+4. **TDOA triangulation.** Localization uses time-difference-of-arrival needing sub-ms clock
+   sync across sensors (sound ≈ 343 m/s → 1 ms ≈ 0.34 m). **Fixed, networked sensors with
+   GPS/PTP time + known positions make this tractable; mobile unsynced phones do not** —
+   which is exactly why the schools/buildings fixed-sensor idea is the right architecture.
+5. **Validation + liability.** Life-safety + legal exposure (wrongful dispatch). Requires
+   rigorous accuracy validation and "decision-support aid, not authoritative" positioning.
+
+**Recommended architecture:** a **fixed dedicated-sensor** line (small edge node: high-SPL
+mic + compute like the existing RF/edge hardware or a Pi/ESP32-class board, GPS time, known
+location) feeding the SAME C2. Phone-based detection as a secondary best-effort layer.
+
+**Phased lift:**
+- **P1 — single-sensor DETECT + instant C2 alert (no location).** Reuses classifier
+  framework + C2. Medium lift + data collection. Highest life-safety value per effort.
+- **P2 — weapon-class (rifle/handgun/shotgun) + confidence.** More data; medium.
+- **P3 — fixed-sensor TDOA triangulation.** Hardware + time sync + TDOA solver. Medium-high.
+- **P4 — caliber estimate.** R&D; may not reach reliable accuracy — flag as stretch.
+
+**Overall lift:** a serious multi-month **R&D + hardware** effort and its own product/
+contract — but the C2/alerting/fusion backbone being done removes a large chunk, and the
+fixed-sensor framing is very buildable. Fastest high-value slice: **P1 (detect + instant
+alert)** reuses most of the platform and delivers the "faster than 911" value quickly.
+
+**Data need:** labeled gunfire corpus (weapon types, distances, indoor/outdoor) + confounders
+(fireworks, construction, backfire). Academic datasets + range captures; mirror the Fritz
+field-capture approach.
+
+---
+
+## 2. Multi-agency joint operations / geofenced mutual aid
 
 **Status:** planned (post-demo)
 **Raised:** during ECSO demo build, considering Santa Rosa SO as a second customer.
