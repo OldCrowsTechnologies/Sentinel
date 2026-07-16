@@ -1,0 +1,29 @@
+{
+  "_comment": "Copy to node.json and fill in. node.json is gitignored -- it holds a seat code.",
+
+  "device": "hw:1,0",
+  "_device": "ALSA capture device. Run `arecord -l` on the Pi to find it. An I2S HAT is usually hw:1,0; a USB interface is often hw:2,0.",
+
+  "sampleRate": 48000,
+  "channels": 1,
+
+  "nodeId": "ecso-school-01-hallway-a",
+  "_nodeId": "Stable, unique per node. Burned in at provisioning. Part of the (org_id,node_id,seq) dedup key, so DO NOT reuse one across two physical nodes.",
+
+  "lat": 30.4213,
+  "lon": -87.2169,
+  "_latlon": "SURVEYED at install -- walk to the node and read the position. This is the actual reason a fixed node beats a phone (it is NOT that phones can't hear gunshots; measured on 8,015 real shots, phones matched dedicated mics). Known position is what makes TDOA possible later.",
+
+  "callSign": "SCHOOL-01",
+  "_callSign": "What command sees on the C2 roster. A node is a headless deputy.",
+
+  "seatCode": "ECSO-DEMO-25",
+  "_seatCode": "The agency seat code. THIS IS THE ROUTING -- it decides which org's C2 gets the alert, and RLS keeps every other agency from seeing it. School district node -> district code; patrol car -> SO code.",
+
+  "supabaseUrl": "https://YOUR-PROJECT.supabase.co",
+  "supabaseAnonKey": "sb_publishable_...",
+  "_keys": "The anon key is public-safe by design; RLS is the guard. NEVER put a service_role key on a node in a school ceiling.",
+
+  "detect": {},
+  "_detect": "ShotOptions overrides. Defaults are tuned against 8,015 real gunshots (C3GD) -- maxAttackMs=60 in particular cost 6.3 points of recall at its intuitive value of 5. Don't tune these by feel; re-run tools/shot_eval.mjs."
+}
