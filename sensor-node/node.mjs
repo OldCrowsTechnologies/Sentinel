@@ -235,20 +235,45 @@ async function main() {
   ]);
   let carry = Buffer.alloc(0);
   const frameBytes = 2 * cfg.channels;
+  let lastSampleAt = Date.now();
   rec.stdout.on('data', (chunk) => {
     const b = carry.length ? Buffer.concat([carry, chunk]) : chunk;
     const usable = b.length - (b.length % frameBytes);
     carry = usable < b.length ? b.subarray(usable) : Buffer.alloc(0);
-    if (usable > 0) pushSamples(decodeS16(b.subarray(0, usable)));
+    if (usable > 0) {
+      lastSampleAt = Date.now();
+      pushSamples(decodeS16(b.subarray(0, usable)));
+    }
   });
   rec.stderr.on('data', (d) => {
     const s = String(d).trim();
     if (s && !/^Recording/.test(s)) log('arecord:', s);
   });
   rec.on('exit', (code) => {
+    // Clear THIS invocation's watchdog before recursing, or the stale interval
+    // (closed over this call's lastSampleAt, which stops updating) fires exit(3)
+    // and kills the healthy process the restart just started.
+    clearInterval(watchdog);
     log('arecord exited', code, '-- restarting in 2s');
     setTimeout(() => void main(), 2000);
   });
+
+  // Capture-stall watchdog. A wedged mic (HAT dropped off the I2S bus, arecord
+  // hung without exiting) delivers no bytes but the process keeps "running" --
+  // the worst failure for a life-safety sensor, because the site believes it is
+  // covered. If no samples arrive for STALL_MS, exit(3); systemd Restart=always
+  // (corvus-sensor.service) brings us back. This is the liveness guarantee.
+  const STALL_MS = 10000;
+  const watchdog = setInterval(() => {
+    const silent = Date.now() - lastSampleAt;
+    if (silent > STALL_MS) {
+      log(`FATAL: no audio for ${silent}ms -- capture stalled. Exiting for restart.`);
+      clearInterval(watchdog);
+      try { rec.kill('SIGKILL'); } catch {}
+      process.exit(3);
+    }
+  }, 2000);
+  watchdog.unref();
 }
 
 void main().catch((e) => {

@@ -1,0 +1,48 @@
+[Unit]
+# Corvus Sentinel gunshot sensor node -- runs the detector 24/7 on a Pi.
+# Install: see sensor-node/README.md. Enable: sudo systemctl enable --now corvus-sensor
+Description=Corvus Sentinel gunshot sensor node
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=corvus
+Group=audio
+WorkingDirectory=/opt/corvus/sensor-node
+# --experimental-strip-types lets Node run the shared lib/shotDetect.ts unchanged,
+# which is the whole point of a Node brain: the device runs the exact detector
+# validated at 97.8% recall, no re-implementation.
+ExecStart=/usr/bin/node --experimental-strip-types /opt/corvus/sensor-node/node.mjs --config /opt/corvus/sensor-node/node.json
+
+# Always-on discipline: a sensor that dies silently is worse than no sensor,
+# because the site believes it is covered. Restart hard, restart always.
+Restart=always
+RestartSec=3
+# If it crash-loops, don't hammer forever silently -- but never give up entirely.
+StartLimitIntervalSec=0
+
+# Survive power events gracefully. On a school IDF UPS the node rides through a
+# blip; on loss it comes straight back on restore.
+TimeoutStopSec=10
+KillSignal=SIGINT
+
+# Capture-stall self-heal: node.mjs exits(3) if the mic stops delivering samples
+# (arecord wedged, HAT fell off the bus). Restart=always then brings it back --
+# a real liveness guard without needing systemd's sd_notify socket, which a pure
+# Node process can't cleanly write to. A silently-deaf sensor is the failure mode
+# this exists to prevent.
+
+# Hardening -- this box lives in a public building. Least privilege.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+# The node persists ONLY its enrollment session + config here. NEVER audio.
+ReadWritePaths=/opt/corvus/sensor-node
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
