@@ -21,8 +21,16 @@ import type { Detection } from './threatTracker';
 /** Bump when the wire shape changes incompatibly. */
 export const MESH_PROTO_VERSION = 1;
 
-/** Which sensor produced the report (acoustic today; RF tiers per PHASE2-RF.md). */
-export type ContactKind = 'acoustic' | 'rid' | 'lora' | 'wifi';
+/**
+ * Which sensor produced the report (acoustic today; RF tiers per PHASE2-RF.md;
+ * `gunshot` per SENTINEL-SHOTS-FIRED.md).
+ *
+ * `gunshot` is a SENSOR TYPE, not a second product: a shot rides the same pipe,
+ * the same fusion, the same per-agency RLS and the same C2 map/log/alerting as a
+ * drone contact. Adding a kind is the whole integration -- that unified pane is
+ * the point. See docs/SENTINEL-SHOTS-FIRED.md §0.
+ */
+export type ContactKind = 'acoustic' | 'rid' | 'lora' | 'wifi' | 'gunshot';
 
 export interface ContactReport {
   v: number; // proto version (MESH_PROTO_VERSION)
@@ -48,7 +56,7 @@ export interface ContactReport {
   oodScore?: number | null;
 }
 
-const KINDS: ReadonlySet<string> = new Set(['acoustic', 'rid', 'lora', 'wifi']);
+const KINDS: ReadonlySet<string> = new Set(['acoustic', 'rid', 'lora', 'wifi', 'gunshot']);
 
 function isNum(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x);

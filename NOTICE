@@ -1,0 +1,135 @@
+NOTICE — Third-party data & attribution
+Corvus Sentinel (Old Crows Wireless Solutions)
+=============================================================================
+
+This file records the provenance and license of every third-party dataset used
+to train any model shipped in Corvus Sentinel, and carries the attributions
+those licenses require.
+
+It exists because Sentinel is a COMMERCIAL, life-safety product. Several of the
+best-known public audio datasets are licensed NON-COMMERCIALLY, and training on
+one would quietly contaminate a model we sell. Provenance is tracked here up
+front so that question is answerable at any point, by anyone, without archaeology.
+
+Maintenance rule: nothing gets trained on until it is listed below with its
+license. If a dataset is not in this file, it is not cleared for use.
+
+
+-----------------------------------------------------------------------------
+1. DATASETS IN USE
+-----------------------------------------------------------------------------
+
+### C3GD — Certus Caliber Classification Gunshot Dataset
+    Used for:  gunshot detection + weapon/caliber classification baseline
+               (docs/SENTINEL-SHOTS-FIRED.md P1/P2/P4)
+    Authors:   Sinclair Gurny, Ryan Quinn (Stonewall Defense LLC dba Certus
+               Innovations)
+    Source:    https://zenodo.org/records/20274400
+    Paper:     "Descriptor: Certus Caliber Classification Gunshot Dataset (C3GD)"
+               arXiv:2606.18135
+    License:   Creative Commons Attribution 4.0 International (CC BY 4.0)
+               https://creativecommons.org/licenses/by/4.0/
+    Commercial use: PERMITTED with attribution.
+    Contents:  8,000+ field-collected shots, 28 firearms, 16 calibers.
+
+    ATTRIBUTION: "Certus Caliber Classification Gunshot Dataset (C3GD)" by
+    Sinclair Gurny and Ryan Quinn, licensed under CC BY 4.0.
+
+    NOTE: the C3GD descriptor paper and the Certus training-code README cite
+    DIFFERENT Zenodo record ids (20274400 vs 20737299) — likely a versioned
+    re-release. Resolve and pin the exact record id + version here before
+    training, so results are reproducible against a known snapshot.
+
+
+### FSD50K — Freesound Dataset 50k
+    Used for:  CONFOUNDER corpus (fireworks, door slams, hammering,
+               construction, thunder, engine backfire) — the false-positive
+               fight described in docs/SENTINEL-SHOTS-FIRED.md §10.
+    Authors:   Eduardo Fonseca, Xavier Favory, Jordi Pons, Frederic Font,
+               Xavier Serra (Music Technology Group, Universitat Pompeu Fabra)
+    Source:    https://zenodo.org/records/4060432
+    Paper:     "FSD50K: An Open Dataset of Human-Labeled Sound Events"
+               arXiv:2010.00475
+    License:   The dataset AS A WHOLE is CC BY 4.0. Individual clips carry
+               their OWN licenses, assigned by the original Freesound uploader:
+                 CC0            19,873 clips  (38.8%)  — no attribution needed
+                 CC-BY          23,506 clips  (45.9%)  — attribution required
+                 CC-BY-NC        6,041 clips  (11.8%)  — NOT USED (see §2)
+                 CC Sampling+    1,777 clips   (3.5%)  — NOT USED (see §2)
+
+    *** ONLY THE CC0 AND CC-BY CLIPS ARE USED. ***
+
+    Enforcement is mechanical, not manual: tools/fsd50k_license_filter.mjs
+    reads the upstream dev_clips_info_FSD50K.json / eval_clips_info_FSD50K.json
+    license maps, emits a training whitelist containing ONLY CC0 + CC-BY clips,
+    and generates the per-clip attribution list at NOTICE-fsd50k-clips.txt.
+    Run it before training; commit its output.
+
+    ATTRIBUTION: "FSD50K" by Eduardo Fonseca, Xavier Favory, Jordi Pons,
+    Frederic Font and Xavier Serra, licensed under CC BY 4.0. Per-clip
+    attributions for the CC-BY clips actually used: see
+    NOTICE-fsd50k-clips.txt.
+
+
+-----------------------------------------------------------------------------
+2. DATASETS DELIBERATELY EXCLUDED
+-----------------------------------------------------------------------------
+
+Recorded so nobody re-litigates this, or reaches for one of these because it is
+the top search result. Each was evaluated and rejected.
+
+### UrbanSound8K — EXCLUDED (non-commercial license)
+    https://urbansounddataset.weebly.com/
+    License: CC BY-NC 3.0. Has a `gun_shot` class (374 clips) and is the single
+    most common starting point for gunshot classifiers. The NC term forbids
+    commercial use. Sentinel is sold. DO NOT USE.
+
+### ESC-50 — EXCLUDED (non-commercial license)
+    License: CC BY-NC 3.0. Has a gunshot class (40 clips). Same reason.
+    DO NOT USE.
+
+### FSD50K CC-BY-NC clips — EXCLUDED (non-commercial license)
+    The NC subset of FSD50K, filtered out mechanically (see §1).
+
+### FSD50K CC Sampling+ clips — EXCLUDED (license unclear for ML training)
+    CC Sampling+ permits transformative "sampling" but restricts redistribution
+    of the whole work, and its application to model training is not settled.
+    Only 3.5% of the corpus — not worth the ambiguity. Excluded by default.
+
+### Gunshot Audio Forensics Dataset (Cadre Forensics / NIJ) — NOT CLEARED
+    https://cadreforensics.com/audio/  (NIJ grant 2016-DN-BX-0183)
+    ~10,000 shots, 20 firearms x 20 positions x 4 devices, .22LR-.300BLK,
+    caliber-labeled. Technically excellent and free with registration — but it
+    carries NO LICENSE STATEMENT, only "provided as-is for use by any
+    researcher." That is not a grant of commercial rights.
+    STATUS: blocked pending written clarification from Cadre/NIJ. Do not train
+    on it until that is in hand and recorded here.
+
+### Multi-firearm, multi-orientation gunshot dataset — NOT CLEARED
+    https://zenodo.org/record/7004819  (DOI 10.5281/zenodo.7004819)
+    ~2,100 files @ 44.1 kHz, 4 firearms (AR-556 .223, Remington 870 12ga,
+    .38 S&W revolver, Glock 17 9mm), captured on Raspberry Pi / ReSpeaker /
+    MiniDSP UMA-8 / phones — i.e. almost exactly our planned edge-node hardware.
+    STATUS: high value, license not yet verified on the Zenodo record. Confirm
+    the license field before use and record it here.
+
+
+-----------------------------------------------------------------------------
+3. FIRST-PARTY DATA
+-----------------------------------------------------------------------------
+
+Field captures recorded by Old Crows Wireless Solutions (drone corpus: Fritz
+airfield; gunshot corpus: authorized range captures per
+docs/SENTINEL-SHOTS-FIRED.md §9) are wholly owned and carry no third-party
+obligations. They are not listed clip-by-clip here.
+
+
+-----------------------------------------------------------------------------
+4. SOFTWARE
+-----------------------------------------------------------------------------
+
+### certus-dcase-2026-training-code
+    https://github.com/Stonewall-Defense/certus-dcase-2026-training-code
+    License: MIT. Reference implementation (ResNet-18 baseline) for C3GD.
+    If any of this code is vendored into Sentinel, reproduce the MIT license
+    text alongside it and note the files here.
