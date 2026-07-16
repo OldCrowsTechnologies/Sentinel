@@ -29,12 +29,31 @@ couldn't be confirmed it's marked ≈ or "verify."
 
 ---
 
-## 0. One node design, three jackets
+## 0. One node design, five jackets
 
-Every deployment is the **same core**: a Raspberry Pi + a microphone + a network
-path, running [`sensor-node/node.mjs`](../sensor-node/node.mjs). What changes is
-power (PoE vs 12 V), enclosure (ceiling vs weatherproof vs vehicle), and uplink
-(wired vs cellular). Buy the core once, learn it, then add the jacket.
+Every node is the **same core** — a Pi + mic + LoRa, running the shared
+[`detectShots()`](../lib/shotDetect.ts). What changes per role is the brain size,
+the uplink, the power source, and the **housing**. Five types:
+
+| Node type | Brain | Uplink | Power | Housing | Unit $ (materials) |
+|---|---|---|---|---|---:|
+| **Indoor leaf** | Pi Zero 2 W | LoRa → gateway | building + battery | ceiling grille, tamper-resist | **~$150** |
+| **Indoor gateway** | Pi 4 | LoRa + **cellular** | building + battery | ceiling grille (larger), tamper | **~$230** |
+| **Roof gateway** | Pi 4 | LoRa + cellular | building + battery | Hammond IP68 + Gore vent | **~$270** |
+| **Vehicle** | Pi 4 | LoRa + cellular | 12 V + battery | trunk box + roof mic puck + NMO | **~$290** |
+| **Drone** | Zero 2 W / ESP32 | LoRa (+cell opt) | drone / LiPo | ultralight shell + clip | **~$55** |
+
+A site is mostly cheap **leaves** hopping to **≥1 gateway** (§2). Detailed parts
+per deployment are in §1–§4b; the **housing** for each type is below.
+
+### 0.1 Housing per node type
+
+| Type | Housing approach | Key parts | ~$ |
+|---|---|---|---:|
+| **Indoor leaf / gateway** | **Labeled "safety sensor" ceiling housing** with an acoustic **grille** face (passes sound by design) + dust mesh + **tamper-resist fasteners** (pin-Torx) + tamper switch. **NOT a fake smoke detector** — a hidden audio device in a school is the wiretap-optics problem; a visible, labeled sensor is the legal defense and reinforces "detects events, never records". No perfect off-the-shelf SKU yet → adapt a ceiling occupancy-sensor / speaker-grille housing now; custom injection-molded at volume. Gateway = same shell one size up for the cellular HAT + antenna clear of metal. | ceiling grille enclosure, acoustic mesh, security screws, tamper switch | 25–40 |
+| **Roof gateway** | **Solved** (research). UV-poly IP68 box + adhesive ePTFE acoustic vent over a downward port + pressure vent + brass gland + external antenna bulkheads. | Hammond 1554T2GY, Gore GAW334, Amphenol VENT-PQ1NBK, Hammond 1427BCG | ~80 |
+| **Vehicle** | **Split — brain in the trunk, not the roof.** Electronics (Pi/battery/buck) in a bolted **trunk enclosure** (no heat/car-wash/theft exposure); only a flush **roof mic puck** (Gore-vented) + **NMO antennas** are exterior — identical to existing police antenna installs. | trunk box, mic puck w/ Gore vent, NMO mounts (Larsen) | ~60 |
+| **Drone** | **Ultralight** 3D-printed / foam shell + mounting clip; Zero 2 W / ESP32 + LoRa + tiny LiPo potted against vibration; splash-resist only. Overwatch uses the **drone's own camera** — no added optics. Weight is the spec. | printed shell, clip, potting | 5–15 |
 
 ---
 
@@ -222,7 +241,8 @@ territory — budget labor, not just parts.
 | **LoRa radio** (SX1262 HAT) | Joins/forms the mesh — relays site nodes *and* other cruisers | ≈$15–20 | Waveshare |
 | Mic + mount (see below) | | | |
 
-**Cost per node ≈ $170–230** + ~$1–2/mo cellular.
+**Cost per node ≈ $260–320** (electronics ~$213 + mic + split housing: trunk box +
+roof mic puck + NMO mounts ~$60) + ~$1–2/mo cellular. Plan **~$290**.
 
 **Every cruiser is a mobile gateway** — see [ARCH §6](SENTINEL-SHOTS-FIRED-ARCH.md).
 It already has cellular (uplink) + GPS (position **and** a sub-ms clock), so adding
