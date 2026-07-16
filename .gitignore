@@ -19,6 +19,11 @@ training/__pycache__/
 # version the self-describing .json sidecars + README so the corpus is documented.
 captures/**/*.iq8
 
+# Third-party datasets (C3GD, FSD50K, ...). Re-downloadable from the pinned
+# Zenodo record ids in NOTICE, so we don't version them -- provenance lives in
+# NOTICE, not in the object store. First-party captures DO get versioned (above).
+data/external/
+
 # Windows rtl-sdr binaries (rtl_tcp.exe + DLLs) — vendored locally for field
 # capture convenience; not source, don't bloat the repo.
 tools/rtlsdr-win/

@@ -133,6 +133,35 @@ test('STILL fires on a door slam -- the trigger must not discriminate', () => {
   assert.ok(d.present, 'door slam should reach the classifier, not be gated out here');
 });
 
+test('attack gate stays open enough for smeared real-world onsets', () => {
+  // Regression pin for the corpus finding (tools/shot_eval.mjs against C3GD).
+  // A gunshot leaves the muzzle in ~1 ms but does NOT arrive that way -- mic
+  // AGC and acoustic scattering smear the onset to 11-61 ms. A 5 ms default
+  // (which every synthetic fixture here passes at 0.00 ms) scored 91.8% recall
+  // on 8,015 real shots and only 77.1% on the forest mic. 60 ms -> 98.1%/98.4%.
+  //
+  // This synthesises the smeared case the real corpus exposed: a loud, obvious
+  // blast whose energy ramps over ~25 ms instead of instantly.
+  const rng = mkRng(31);
+  const x = bed(rng);
+  const at = N >> 1;
+  const ramp = Math.round(0.025 * SR); // 25 ms smeared rise
+  for (let i = 0; i < ramp; i++) x[at + i] += 0.7 * rng() * (i / ramp) ** 2;
+  const tail = Math.round(0.12 * SR);
+  for (let i = 0; i < tail && at + ramp + i < N; i++) x[at + ramp + i] += 0.7 * rng() * Math.exp(-i / (tail / 4));
+
+  const d = detectShots(x, SR);
+  assert.ok(d.present, 'a smeared-onset blast is still a gunshot and must fire');
+  assert.ok(d.candidates[0].attackMs > 5, `fixture should exercise the smeared case, got ${d.candidates[0].attackMs.toFixed(1)} ms`);
+
+  // ...and the tight default this replaced would have dropped it.
+  assert.equal(
+    detectShots(x, SR, { maxAttackMs: 5 }).present,
+    false,
+    'fixture is only meaningful if the OLD 5 ms gate would have missed it'
+  );
+});
+
 test('the drone stationarity gate suppresses gunshots -- keep it OFF here', () => {
   // Pins the measurement in lib/shotDetect.ts's header. The gate scores bins by
   // median/mean across frames, so it attenuates the burstiest signal hardest --

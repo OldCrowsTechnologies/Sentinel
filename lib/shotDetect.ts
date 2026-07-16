@@ -59,7 +59,10 @@ export interface ShotOptions {
   frameMs?: number;
   /** Peak-over-floor (dB) required to trigger. */
   thresholdDb?: number;
-  /** Reject onsets slower than this (ms) -- wind gusts, engine rev, music swells. */
+  /**
+   * Reject onsets slower than this (ms). Tuned on REAL gunshots, not intuition
+   * -- see the note on the default in detectShots().
+   */
   maxAttackMs?: number;
   /** Minimum gap between separately-counted shots (ms). Bounds burst counting. */
   refractoryMs?: number;
@@ -106,7 +109,28 @@ export function detectShots(
   const highPassHz = opts.highPassHz ?? 300;
   const frameMs = opts.frameMs ?? 1;
   const thresholdDb = opts.thresholdDb ?? 15;
-  const maxAttackMs = opts.maxAttackMs ?? 5;
+  // 60 ms, NOT the ~1 ms a gunshot's physics suggests. Measured against 8,015
+  // real shots (C3GD; tools/shot_eval.mjs):
+  //
+  //   maxAttackMs |  recall  |  ERIN (33 m, in forest)  |  nuisance on shouting
+  //             5 |   91.8%  |          77.1%           |          0
+  //            20 |   96.4%  |          86.6%           |          2
+  //            60 |   98.1%  |          98.4%           |          4
+  //           200 |   98.5%  |          99.2%           |          8  + WIND FIRES
+  //
+  // A gunshot leaves the muzzle in ~1 ms, but it does not ARRIVE that way: mic
+  // AGC/limiting and acoustic scattering smear the onset. Real missed shots
+  // measured 11-61 ms of attack with peak-over-floor of 30-36 dB -- loud and
+  // obvious, rejected purely on rise time. Synthetic impulses all show 0.00 ms,
+  // which is exactly why they cannot be trusted to set this.
+  //
+  // 60 ms is the knee: ERIN saturates there and it keeps ~3x margin from the
+  // 200 ms cliff where wind gusts start triggering. The cost is ~4 nuisance
+  // triggers per second of shouting -- which is the trade the two-stage gate
+  // exists to make. Shouting co-occurs with every real shooting, so the
+  // classifier must handle it regardless; letting it through costs CPU, while
+  // gating it out here costs shots we can never get back.
+  const maxAttackMs = opts.maxAttackMs ?? 60;
   const refractoryMs = opts.refractoryMs ?? 40;
 
   const len = samples.length;

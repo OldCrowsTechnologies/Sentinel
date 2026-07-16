@@ -24,21 +24,21 @@ license. If a dataset is not in this file, it is not cleared for use.
                (docs/SENTINEL-SHOTS-FIRED.md P1/P2/P4)
     Authors:   Sinclair Gurny, Ryan Quinn (Stonewall Defense LLC dba Certus
                Innovations)
-    Source:    https://zenodo.org/records/20274400
+    Source:    https://zenodo.org/records/20274400   <-- PINNED
+    Version:   v1.0.0, published 2026-05-18 (Zenodo reports is_last: true)
+    File:      C3GD-Dataset.zip, 433,391,390 bytes
     Paper:     "Descriptor: Certus Caliber Classification Gunshot Dataset (C3GD)"
                arXiv:2606.18135
     License:   Creative Commons Attribution 4.0 International (CC BY 4.0)
                https://creativecommons.org/licenses/by/4.0/
     Commercial use: PERMITTED with attribution.
     Contents:  8,000+ field-collected shots, 28 firearms, 16 calibers.
+    Provenance: FIRST-PARTY field collection by Certus. Single source, no merge
+               of other corpora — which is why this one is cleared and the
+               DCASE set below is not (see §2).
 
     ATTRIBUTION: "Certus Caliber Classification Gunshot Dataset (C3GD)" by
     Sinclair Gurny and Ryan Quinn, licensed under CC BY 4.0.
-
-    NOTE: the C3GD descriptor paper and the Certus training-code README cite
-    DIFFERENT Zenodo record ids (20274400 vs 20737299) — likely a versioned
-    re-release. Resolve and pin the exact record id + version here before
-    training, so results are reproducible against a known snapshot.
 
 
 ### FSD50K — Freesound Dataset 50k
@@ -95,6 +95,27 @@ the top search result. Each was evaluated and rejected.
     CC Sampling+ permits transformative "sampling" but restricts redistribution
     of the whole work, and its application to model training is not settled.
     Only 3.5% of the corpus — not worth the ambiguity. Excluded by default.
+
+### Certus DCASE 2026 Gunshot Classification Audio Dataset — NOT CLEARED
+    https://zenodo.org/records/20737299
+    certus-dcase-gunshot-multiclass.zip, 1,123,951,908 bytes, published
+    2026-06-17. Labelled CC BY 4.0.
+
+    This is a DIFFERENT dataset from C3GD (§1) — not a newer version of it.
+    Same group, much larger: the companion paper (arXiv:2606.19568) describes
+    23,000+ recordings over 85 firearms and 21 calibers, built by COMBINING
+    FIVE OPEN-ACCESS DATASETS.
+
+    That combination is the problem. A CC-BY label on the aggregate zip does
+    not re-license clips that arrived under CC BY-NC — and the two most common
+    public gunshot corpora (UrbanSound8K, ESC-50) are both NC. If either was
+    folded in, training on this contaminates a commercial model exactly the way
+    §2 exists to prevent.
+
+    STATUS: blocked pending an itemised source list for the five constituent
+    datasets and their licenses. Attractive (it is the biggest labelled gunshot
+    corpus available) but not usable on a CC-BY assertion alone. C3GD proper is
+    first-party and single-source, so it carries no such risk — start there.
 
 ### Gunshot Audio Forensics Dataset (Cadre Forensics / NIJ) — NOT CLEARED
     https://cadreforensics.com/audio/  (NIJ grant 2016-DN-BX-0183)
