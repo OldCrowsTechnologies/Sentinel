@@ -124,16 +124,35 @@ ratios → MLP 64×32). Gunshots are the opposite — **short transients** — s
 
 ## 6. Sensor / hardware plan (fixed node)
 
-**BOM sketch (per node — refine later):**
-- High-SPL MEMS or electret mic rated to ~135–150 dB SPL (no clipping on close shots).
-- ADC / codec at ≥48 kHz.
-- Compute: Raspberry Pi Zero 2 W / ESP32-S3 class, or reuse the Corvus RF/edge board.
-- GPS module (for disciplined time + known position) or wired PTP/NTP for sync.
-- PoE or local power; weatherproof enclosure for exterior; tamper switch for schools.
-- Uplink: building LAN/Wi-Fi or cell → same Supabase.
+**Full per-deployment BOM with part numbers, prices, and links lives in
+[SENTINEL-HARDWARE-BOM.md](SENTINEL-HARDWARE-BOM.md)** (school / roof / vehicle).
+The brain + software are built and proven — [`sensor-node/`](../sensor-node/),
+Raspberry Pi running the shared `detectShots()` unchanged. Summary of what the
+research resolved vs the original sketch:
 
-**Why fixed:** known position (no localization guesswork), stable power/compute, real mic,
-and network time sync — the four things phones can't guarantee.
+- **Brain = Raspberry Pi, not ESP32.** A Pi runs `lib/shotDetect.ts` unchanged
+  (the exact 97.8%-recall detector); an ESP32 is a firmware rewrite AND can't fit
+  a ResNet-scale classifier. Pi 4 (2 GB) to prototype (~$45), CM4+eMMC for
+  production (~$97). ESP32-S3 is viable only as a trigger-only satellite.
+- **Mic = a $7 120-dB I2S MEMS breakout (SPH0645) to start**, NOT the
+  ~135–150 dB part the sketch called for. Measured: clipping doesn't hurt
+  detection, and C3GD is 78.5% clipped yet trains to 97% caliber accuracy. The
+  high-AOP dual-mic design (Infineon IM73A135 + a sensitive mic, per ShotSpotter
+  US11361636) is a **P2** refinement needing a custom PCB — no high-AOP part is
+  sold on an I2S breakout.
+- **Time sync is NOT a P1 cost.** A single node has nothing to synchronize
+  against. GPS-PPS / PTP is Phase-3-mesh only (§7). This deletes a whole subsystem
+  and $40–310/node from the P1 build.
+- **Enclosure = UV-stabilized polycarbonate + adhesive ePTFE acoustic vent**
+  (Gore GAW334) over a downward port; ABS is indoor-only (fails in UV). Pass sound
+  through a waterproof wall via the membrane — the industry-converged answer.
+- **Power: PoE** for fixed (one cable = power + data, and the IDF UPS carries the
+  sensor net through building power loss); 12 V buck + supercap for vehicle.
+
+**Why fixed (corrected):** known **surveyed position** (what makes TDOA possible),
+guaranteed power, and controlled always-on placement. **NOT** "phones can't hear
+shots" — measured on 8,015 real shots, phones matched dedicated mics for detection
+(§ working log). Keep that claim out of the pitch; it's false and checkable.
 
 ---
 
@@ -187,21 +206,39 @@ and network time sync — the four things phones can't guarantee.
 
 ## 11. Open questions / decisions
 
-- [ ] Fixed-sensor hardware: reuse the Corvus RF/edge board vs a Pi/ESP32 design? (cost, mic quality)
-- [ ] Time-sync method for TDOA: GPS-disciplined vs PTP over building LAN?
+- [x] **Fixed-sensor hardware: Raspberry Pi** (runs the shared detector unchanged;
+      ESP32 = rewrite + can't fit the classifier). Pi 4 proto → CM4 production. See BOM.
+- [x] **Time-sync for TDOA: GPS-PPS grandmaster on the roof node + PTP over wired LAN**
+      to indoor nodes (~1–5 µs, far inside the sub-ms budget). And: **not needed until
+      Phase 3** — P1 uses no timing hardware at all.
 - [ ] Buyer/contract: SO vs school district (safety grants) — same C2 tenant or separate org?
 - [ ] Evidentiary posture: decision-support only, or pursue court-admissible standards?
 - [ ] How far to chase caliber (P4) vs stop at weapon class (P2)?
+- [ ] **Vehicle speed-gating threshold** (~30 mph?) and whether to pursue a multi-mic
+      coherence array for at-speed detection (the only mechanism with real headroom; big lift).
+- [ ] **Human-in-the-loop or not?** ShotSpotter's cost IS its review center; skipping it is
+      the 10–50× cost win but takes the wrongful-dispatch liability onto the classifier directly.
 
 ---
 
 ## 12. Next actions
 
-- [ ] P1 mini-spec: finalize fixed-sensor BOM + the `kind:'gunshot'` schema delta + dashboard
-      "SHOTS FIRED" alert design.
+- [x] P1 mini-spec: `kind:'gunshot'` schema seam (done, `meshTypes.ts`), fixed-sensor BOM
+      (done, [SENTINEL-HARDWARE-BOM.md](SENTINEL-HARDWARE-BOM.md)), sensor node built + proven
+      ([`sensor-node/`](../sensor-node/)). Remaining: dashboard "SHOTS FIRED" banner + marker.
+- [ ] Buy the §1 bench kit (~$85) and run the node on a real Pi hearing real shots.
 - [ ] Stand up a data-collection plan + first authorized range capture session.
-- [ ] Prototype the impulse-detection front-end + confounder classifier on public datasets.
+- [ ] Train the confounder classifier on C3GD (positives) + FSD50K CC0/CC-BY (confounders).
 
 ## Working log
 - 2026-07-15 — thread created; unified-C2 architecture decided (gunshot = a `kind`). Reuse
   inventory + phasing + schema delta captured.
+- 2026-07-16 — **P1 built.** `kind:'gunshot'` seam landed; license-clean data path (C3GD +
+  FSD50K, NOTICE + mechanical license filter); stage-1 impulse trigger tuned on **8,015 real
+  shots → 97.8% recall** (`tools/shot_eval.mjs`); full Raspberry Pi sensor node + deploy
+  scaffolding ([`sensor-node/`](../sensor-node/)). **Key measured finding: phones matched
+  dedicated mics for detection (97.7% vs 97.8%)** — the doc's "phones are inadequate" premise
+  is false for detection; fixed nodes win on surveyed position/power/placement instead.
+  Hardware research → full BOM (school/roof/vehicle) with links. **Vehicle at highway speed is
+  an open research problem** (Boomerang caps 60 mph); shipping vehicle node speed-gated. **P1
+  needs no GPS/timing hardware.**
