@@ -222,6 +222,12 @@ shots" — measured on 8,015 real shots, phones matched dedicated mics for detec
       confounder corpus (self-serve — no range needed) for the classifier.
 - [ ] **Human-in-the-loop or not?** ShotSpotter's cost IS its review center; skipping it is
       the 10–50× cost win but takes the wrongful-dispatch liability onto the classifier directly.
+- [ ] **Authenticated mesh join (SECURITY — gates field use).** With cruisers as dynamic
+      gateways ([ARCH §7](SENTINEL-SHOTS-FIRED-ARCH.md)), an open LoRa mesh is a spoof/DoS
+      vector into dispatch. Needs agency keys + signed reports before any deployment. Largest
+      new-code item in the mesh layer.
+- [ ] **Mobile mesh topology:** few-hop-to-gateway (rec — lowest latency, life-safety) vs
+      true multi-hop mesh (max coverage, more to build)?
 
 ---
 
@@ -246,3 +252,11 @@ shots" — measured on 8,015 real shots, phones matched dedicated mics for detec
   Hardware research → full BOM (school/roof/vehicle) with links. **Vehicle at highway speed is
   an open research problem** (Boomerang caps 60 mph); shipping vehicle node speed-gated. **P1
   needs no GPS/timing hardware.**
+- 2026-07-16 — **Reference architecture pinned** ([SENTINEL-SHOTS-FIRED-ARCH.md](SENTINEL-SHOTS-FIRED-ARCH.md)):
+  sensing → LoRa mesh → centralized fusion → C2. Nodes are dumb leaves (detect+report); fusion
+  is centralized, never peer-to-peer. **Localization ladder** made explicit: coarse "which nodes
+  heard it" (P1, ships first, already beats 911) → range-only region (P2) → TDOA GPS point (P3).
+  **Mobile-gateway decision:** every cruiser is a LoRa+cellular+GPS gateway → coverage travels
+  with deputies, redundant uplinks on arrival, and 3 cruisers triangulate an incident with zero
+  installed nodes (mobile GPS units self-solve the time sync indoor nodes can't). BOM reconciled
+  to LoRa-leaf + gateway roles. **Security (authenticated join) is now the #1 pre-field item.**

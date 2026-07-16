@@ -72,23 +72,57 @@ Reboot, `arecord -l` to confirm, then follow [`sensor-node/README.md`](../sensor
 
 ---
 
-## 2. FIXED INDOOR NODE — school / county building (~$95–130 + enclosure)
+## 2. FIXED INDOOR NODE — school / county building
 
-Ceiling-mounted, PoE from the IDF closet. One cable = power + data. The IDF is
-usually on a UPS, so **the sensor net rides through a building power event** — a
-life-safety argument, not a convenience.
+**Two roles on a LoRa mesh** (see [SENTINEL-SHOTS-FIRED-ARCH.md](SENTINEL-SHOTS-FIRED-ARCH.md)):
+most nodes are cheap **leaves** (detect + report over LoRa); a site keeps **≥1
+gateway** (a leaf + a cellular uplink) that relays the whole mesh to C2. Every
+patrol cruiser is *also* a gateway (§4), so a site gains redundant uplinks the
+moment deputies arrive. Both roles carry an on-node battery so the alert path
+survives a building power cut.
 
-| Part | Price | Link |
-|---|---|---|
-| Raspberry Pi 4 (2 GB) — or **CM4** for production (§7) | ≈$45 | [CanaKit](https://www.canakit.com/raspberry-pi-4-2gb.html) |
-| **Official Raspberry Pi PoE+ HAT** (5V/4A, 802.3at) — *fits Pi 3B+/4, NOT Pi 5* | **$20** ✅ | [raspberrypi.com](https://www.raspberrypi.com/products/poe-plus-hat/) |
-| Adafruit SPH0645 I2S mic (×1, or ×2 for array) | $6.95 ✅ | [Adafruit 3421](https://www.adafruit.com/product/3421) |
-| Industrial microSD 32 GB | ≈$12 | Amazon |
-| Ceiling enclosure — see note | ≈$15–40 | — |
-| **Requires:** an 802.3at (PoE+) switch/injector in the IDF | (site infra) | — |
+**Leaf node — ~$100–160 + enclosure**
 
-**Cost per node ≈ $95–130** before enclosure. Compare: ShotSpotter is a
-subscription in the **~$65–95k per sq mi per YEAR** range.
+| Part | Why | Price | Link |
+|---|---|---|---|
+| Raspberry Pi 4 (2 GB) — or **CM4** for production (§7) | Core | ≈$45 | [CanaKit](https://www.canakit.com/raspberry-pi-4-2gb.html) |
+| **LoRa radio** (SX1262 HAT) | Mesh transport — reports hop to a gateway (§5 Layer 2). Cheap, sub-GHz, penetrates walls | ≈$15–20 | Waveshare / Adafruit |
+| **Battery UPS HAT + cells** (see Power & backup) | Runs through a power outage; auto-recharge on restore | ≈$40–70 | verify chemistry |
+| **Building-power feed:** mains USB-C adapter *or* PoE-splitter (power-only) | Charges the battery + runs normally. Adapter if there's an outlet; PoE-splitter if only an Ethernet drop is run | ≈$8–20 | — |
+| Adafruit SPH0645 I2S mic (×1, or ×2 for array) | Sensor | $6.95 ✅ | [Adafruit 3421](https://www.adafruit.com/product/3421) |
+| Industrial microSD 32 GB | + read-only OverlayFS | ≈$12 | Amazon |
+| Ceiling enclosure — see note | Tamper-resistant housing | ≈$15–40 | — |
+
+**Gateway node — leaf + ~$40–50 + ~$1–2/mo:** add a **cellular HAT** (Waveshare
+SIM7080G, LTE-M) + a [Hologram SIM](https://www.hologram.io/pricing). One gateway
+serves the whole site's mesh — one SIM per building, not per node. This is the
+cost win of the mesh: 9 cheap leaves + 1 gateway, not 10 cellular nodes.
+
+**Cost:** ~9 leaves at **~$100–160** + 1 gateway at **~$150–210** per site.
+Compare: ShotSpotter is a subscription in the **~$65–95k per sq mi per YEAR** range.
+
+> **⚙️ Power & backup — surviving an outage (applies to §2 and §3).**
+> An alert firing during an outage needs the *whole path* powered — leaf **and**
+> gateway. Each carries its own battery; the gateway's cellular is what keeps the
+> uplink alive independent of the building's switch/router. And a cruiser rolling
+> in (§4) is a fresh battery-backed gateway on the scene.
+> - **Use a real battery, not a supercap.** The supercap UPS in the vehicle BOM
+>   gives 10–60 s — that's *graceful shutdown*, not ride-through. To keep *running*
+>   you need cells. The node averages ~3–4 W (mostly idle-listening; the classifier
+>   only wakes on an impulse), so **2× 18650 ≈ 2 h, 4× ≈ 4 h** — and the acute event
+>   is minutes. A Pi Zero 2 W (production) draws ~1 W and triples that.
+> - **The one real caveat — lithium in a hot ceiling.** A sealed enclosure up there
+>   hits 45–60 °C, where standard **Li-ion 18650 degrades fast and raises fire-code
+>   questions in an occupied school.** **LiFePO4** cells are the fix (safer, far
+>   better heat tolerance) — **but** standard 18650 UPS HATs charge Li-ion (4.2 V),
+>   *not* LiFePO4 (3.6 V), so LiFePO4 needs a LiFePO4-capable UPS board (fewer Pi-HAT
+>   options — **verify before buying**). This chemistry-vs-heat choice is the open
+>   engineering item for the fixed node.
+> - **Auto-failover + auto-recharge is off-the-shelf** — a Waveshare / PiJuice /
+>   Geekworm-class UPS HAT does exactly the mains-normally → battery-on-loss →
+>   recharge-on-restore behavior natively. You buy it, you don't design it.
+> - **Half of it is already built:** the node buffers detections and retries on
+>   reconnect (deduped on `seq`), so the battery's only job is to keep the Pi powered.
 
 > **⚠️ Legal design constraint — this is not optional.** Continuous audio
 > recording in a school is a wiretapping/consent problem and is the fight
@@ -104,22 +138,29 @@ SKU yet — open item.)*
 
 ---
 
-## 3. OUTDOOR / ROOF NODE — weatherproof, acoustic-pass (~$140–190 + install)
+## 3. OUTDOOR / ROOF NODE — weatherproof, acoustic-pass (~$160–270 + install)
 
 The hard part isn't the electronics, it's **passing sound through a waterproof
 wall.** The industry-converged answer: an **adhesive ePTFE acoustic vent** over a
 small downward-facing port behind a rain hood.
 
+**A roof is the ideal gateway spot.** Elevation gives LoRa its real range (the
+5–15 km figure is line-of-sight — height buys it), and sky view gives GPS, which
+means a roof node gets a **sub-ms clock for free → it's TDOA-capable**, unlike an
+indoor leaf (see [ARCH §5](SENTINEL-SHOTS-FIRED-ARCH.md)). So a roof node is
+usually built as a **gateway** (add cellular) and carries a battery like any
+fixed node.
+
 | Part | Why | Price | Link |
 |---|---|---|---|
-| Raspberry Pi 4 (2 GB) + PoE HAT | Core + power | ≈$65 | above |
+| Pi 4 (2 GB) + LoRa radio + battery UPS + power feed | Leaf core (§2). Add cellular HAT (~$40–50) to make it a gateway | ≈$115–185 | above |
 | **Hammond 1554T2GY** enclosure | **UV-stabilized polycarbonate** (ABS is indoor-only — it chalks and cracks in sun), independently tested IP68/NEMA 4X, −40→110 °C, RF-transparent | **$41.78** ✅ | [Hammond](https://www.hammfg.com/electronics/small-case/plastic/1554) |
 | **Gore acoustic vent** (GAW334, ×4) | The mic port. ePTFE, oleophobic, IP68, ~1.4 dB loss @1 kHz. **Buyable in small qty** | **$10 / 4pc** ✅ | [GroupGets](https://groupgets.com/products/replacement-acoustic-vent-for-audiomoth-case) |
 | **Amphenol LTW pressure vent** (VENT-PQ1NBK) | Separate part. A sealed box thermal-cycles daily and pumps moisture past seals without one. Bottom face | **$2.39** ✅ | [DigiKey](https://www.digikey.com/en/products/detail/amphenol-ltw/VENT-PQ1NBK-N8001/8509545) |
 | **Cable gland** — Hammond 1427BCG (brass) | IP68; **brass, not nylon** — nylon photodegrades outdoors | ≈$4 | [Hammond 1427NCG](https://www.hammfg.com/electronics/small-case/accessories/1427ncg) |
 | Pole-mount kit PMB6687KIT1 (if masting) | Fits the 1554 | ≈$15 | Hammond |
 
-**Cost per node ≈ $140–190** before conduit/install labor.
+**Cost per node ≈ $160–270** before conduit/install labor (leaf → gateway; includes battery, +cellular if gateway).
 
 **Design rules that are free if you follow them (from the vendor docs):**
 - **ePTFE membrane faces outward**; port on a **vertical or downward** face so
@@ -176,11 +217,22 @@ territory — budget labor, not just parts.
 | **Automotive TVS diode (SMBJ) + inline fuse** | Load dump can spike >40 V past the buck's ceiling — clamp it | ≈$5 | DigiKey |
 | **Supercap UPS HAT** (25F, 10–60 s) | Graceful shutdown on ignition-off; no SD corruption | ≈$25–35 | Amazon |
 | **GPS module** (MAX-M10S) | Vehicle needs position anyway; also feeds the **speed gate** | ≈$40 | [SparkFun](https://www.sparkfun.com/products/18037) |
-| **LTE-M cellular HAT** (Waveshare SIM7080G) — car has no LAN | Uplink | ≈$40–50 | Waveshare |
+| **LTE-M cellular HAT** (Waveshare SIM7080G) — car has no LAN | Uplink (makes it a gateway) | ≈$40–50 | Waveshare |
 | Cellular data (Hologram, alert-only) | Tiny JSON alerts | **~$1–2/mo** | [Hologram](https://www.hologram.io/pricing) |
+| **LoRa radio** (SX1262 HAT) | Joins/forms the mesh — relays site nodes *and* other cruisers | ≈$15–20 | Waveshare |
 | Mic + mount (see below) | | | |
 
-**Cost per node ≈ $155–210** + ~$1–2/mo cellular.
+**Cost per node ≈ $170–230** + ~$1–2/mo cellular.
+
+**Every cruiser is a mobile gateway** — see [ARCH §6](SENTINEL-SHOTS-FIRED-ARCH.md).
+It already has cellular (uplink) + GPS (position **and** a sub-ms clock), so adding
+the LoRa radio makes it a full gateway *and* a TDOA-capable sensor. Consequences:
+a cruiser arriving at a site adds a **redundant uplink** (restores the path to C2
+even if building comms were cut), and **3 cruisers around an incident triangulate
+it with zero installed nodes.** Coverage travels with the deputies — the thing
+ShotSpotter's fixed model can't do. *(Note: the supercap UPS is graceful-shutdown
+only; if you want a cruiser to keep sensing while parked-and-off, swap in a small
+battery like the fixed nodes.)*
 
 **Mounting & wind (the honest version):**
 - **Best location: roof centerline, flush** — attached boundary layer, least
@@ -262,14 +314,22 @@ rural, or comms-denied. Then the live picture can't come from a cloud C2 at all.
 
 ### What to actually do
 
+**Decided architecture: LoRa-leaf mesh + gateways** (see
+[SENTINEL-SHOTS-FIRED-ARCH.md](SENTINEL-SHOTS-FIRED-ARCH.md)). Cheap LoRa leaves,
+a few cellular gateways per area, and **every cruiser is a mobile gateway** so
+coverage travels with the deputies.
+
 | Situation | Uplink | Status |
 |---|---|---|
-| Bench / first school pilot | **Cellular, one SIM/node** (~$1–2/mo) | ✅ works today, no building IT |
-| Many nodes in one building | **LoRa → one gateway → one uplink** | ⚙️ build Tier-L transport |
-| Rural / comms-denied | **Local C2 relay + opportunistic sync** | ⚙️ net-new, scope before promising |
+| **Single-node bench / first demo** | Cellular on that one node (it *is* a gateway) | ✅ works today, no building IT |
+| **A site (school) of many nodes** | **LoRa leaves → 1+ gateway → uplink** | ⚙️ build Tier-L transport + gateway relay |
+| **Mobile / no fixed infrastructure** | **Cruisers = mobile gateways**, mesh forms ad-hoc | ⚙️ + authenticated dynamic join (ARCH §7) |
+| **Rural / comms-denied** | **Local C2 relay + opportunistic sync** | ⚙️ net-new, scope before promising |
 
-For the prototype: **cellular.** It's the thing that lets you drop a node in a
-school and demo "faster than 911" without ever touching their network.
+For the very first bench demo, a single node with cellular *is* a one-node
+gateway and works today — it's the fastest path to "faster than 911" on a real
+Pi. The mesh (LoRa transport + gateway relay + authenticated join) is the next
+build, and it's what turns one node into the product.
 
 ---
 
