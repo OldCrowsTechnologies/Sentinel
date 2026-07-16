@@ -80,7 +80,7 @@ life-safety argument, not a convenience.
 
 | Part | Price | Link |
 |---|---|---|
-| Raspberry Pi 4 (2 GB) — or **CM4** for production (§6) | ≈$45 | [CanaKit](https://www.canakit.com/raspberry-pi-4-2gb.html) |
+| Raspberry Pi 4 (2 GB) — or **CM4** for production (§7) | ≈$45 | [CanaKit](https://www.canakit.com/raspberry-pi-4-2gb.html) |
 | **Official Raspberry Pi PoE+ HAT** (5V/4A, 802.3at) — *fits Pi 3B+/4, NOT Pi 5* | **$20** ✅ | [raspberrypi.com](https://www.raspberrypi.com/products/poe-plus-hat/) |
 | Adafruit SPH0645 I2S mic (×1, or ×2 for array) | $6.95 ✅ | [Adafruit 3421](https://www.adafruit.com/product/3421) |
 | Industrial microSD 32 GB | ≈$12 | Amazon |
@@ -199,7 +199,81 @@ territory — budget labor, not just parts.
 
 ---
 
-## 5. WHAT NOT TO BUY YET
+## 5. Connectivity — reaching C2 without the building's network
+
+The requirement: a node must **not** depend on the building's internet or IT —
+firewalls, months-long approval cycles, outages, or a ceiling with no usable
+network drop nearby. Here are the layers, cheapest-independence first.
+
+**The key fact that makes this simple:** the node does a plain HTTPS POST to
+Supabase ([`c2.mjs`](../sensor-node/c2.mjs)) over **whatever network interface
+the Pi has.** So "don't use the building's internet" is a *network-interface*
+choice, not a code change. Swap the uplink; the software is byte-for-byte identical.
+
+### Layer 1 — Cellular per node  ✅ buildable now, no code change
+
+Each node carries its own **LTE-M / CAT-M1 modem + SIM** and connects straight to
+the carrier network → C2. Completely independent of the building: no switch port,
+no firewall exception, no school-district IT ticket. It works the moment it powers
+on, in a building you've never coordinated with.
+
+- **Hardware:** Waveshare SIM7080G HAT (≈$40–50) or Sixfab LTE-M kit ($80).
+  LTE-M penetrates buildings better than NB-IoT and is the right tier for tiny alerts.
+- **Data cost:** a gunshot alert is a few hundred bytes. Hologram SIM **~$1–2/mo
+  per node** at this volume.
+- **Why this is the answer, not a footnote:** it removes the single biggest
+  sales-cycle blocker — getting a device onto a school's managed network. You skip
+  that conversation entirely. This is why cellular is the **primary** uplink for
+  fixed installs here, not a failover.
+- **Works with the current code unchanged** — the modem is just the Pi's default route.
+- **Tradeoff:** needs cell coverage at the node (a basement IDF or rural site may
+  not have it), and it's a recurring per-SIM cost that scales with node count —
+  which Layer 2 fixes.
+
+### Layer 2 — LoRa backhaul: many nodes share one uplink  ⚙️ architected, not built
+
+Eight nodes in one school shouldn't mean eight SIMs. Instead, the nodes form a
+**LoRa** link to **one gateway node** that holds the single uplink (cellular, or
+the one sanctioned wired drop).
+
+- LoRa is **license-free sub-GHz ISM, kilometer range, penetrates walls, tiny
+  payloads** — and a gunshot alert *is* tiny (the compact contact report is already
+  ≤40 bytes by design, see PHASE3-MESH.md).
+- **N nodes → 1 gateway → 1 uplink.** One SIM for a whole building instead of N.
+- Reuses the exact LoRa hardware Phase-3 mesh wants (SX127x/126x) — one radio, two jobs.
+- **Status: architected (PHASE3-MESH Tier-L), not yet built for the gunshot node.**
+  The compact report format exists; the LoRa transport + gateway relay is new code.
+
+### Layer 3 — Fully offline / local C2: no cell either  ⚙️ roadmap, biggest add
+
+The deepest case, and Sentinel's stated *normal* operating assumption for some
+deployments (PHASE3-MESH §"COMPLETELY OFFLINE"): no internet **and** no cell —
+rural, or comms-denied. Then the live picture can't come from a cloud C2 at all.
+
+- **A local C2 instance** — a relay/dashboard the command post runs on a laptop or
+  Pi on a local LAN, that nodes reach over LoRa or local Wi-Fi. Alerts render
+  locally in real time, no internet in the loop.
+- **Opportunistic cloud sync** when any uplink appears (a drive-by, a sat terminal),
+  so the agency's tenant picture stays whole.
+- **This is the honest tension:** the C2 is the product, and today the C2 is cloud
+  (Supabase). A local-C2 relay is the missing piece for true no-comms operation.
+  **Status: not built** — it's the largest architectural add, and it's *shared*
+  with the phone product's offline-first requirement, so it's not gunshot-specific work.
+
+### What to actually do
+
+| Situation | Uplink | Status |
+|---|---|---|
+| Bench / first school pilot | **Cellular, one SIM/node** (~$1–2/mo) | ✅ works today, no building IT |
+| Many nodes in one building | **LoRa → one gateway → one uplink** | ⚙️ build Tier-L transport |
+| Rural / comms-denied | **Local C2 relay + opportunistic sync** | ⚙️ net-new, scope before promising |
+
+For the prototype: **cellular.** It's the thing that lets you drop a node in a
+school and demo "faster than 911" without ever touching their network.
+
+---
+
+## 6. WHAT NOT TO BUY YET
 
 - **GPS / PTP / timing hardware for P1** — nothing to sync against with one node.
 - **A high-AOP mic ($130+ custom front-end)** — clipping doesn't hurt P1
@@ -213,7 +287,7 @@ territory — budget labor, not just parts.
 
 ---
 
-## 6. PRODUCTION vs PROTOTYPE (the ~100-unit view)
+## 7. PRODUCTION vs PROTOTYPE (the ~100-unit view)
 
 | Axis | Prototype | Production (~100 units) |
 |---|---|---|
@@ -232,7 +306,7 @@ it deliberately.
 
 ---
 
-## 7. Bottom line
+## 8. Bottom line
 
 - **To start this week:** buy the §1 bench kit (~$85), wire the SPH0645, run
   [`sensor-node/README.md`](../sensor-node/README.md). You'll have a real Pi
