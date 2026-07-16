@@ -48,6 +48,11 @@ location. That's downstream.
 - **Every cruiser is a gateway.** A cruiser already carries cellular (its only uplink)
   and GPS; adding the same LoRa radio the leaves use makes it a **mobile gateway** by
   definition — no new device, just don't disable the relay role.
+- **Every cruiser is a mobile gateway.** Cellular uplink + GPS (position *and* a
+  sub-ms clock) + LoRa radio = a full gateway *and* a TDOA-capable sensor (§5).
+- **Drone node** — a light carry-on package (Pi Zero 2 W / ESP32 + LoRa + small
+  power tap) that makes an LE drone a mesh member. It is a **flying relay, a
+  GPS-timed gateway, and camera/thermal overwatch — NOT an acoustic sensor** (§6.1).
 - **Dynamic join.** A unit entering LoRa range of a mesh joins it (**authenticated** —
   see §7). A school's 10-node mesh gains 3 gateways the moment 3 cruisers arrive:
   redundant uplinks + mobile TDOA contributors (§5).
@@ -135,6 +140,44 @@ install. Here, coverage follows the response:
 - **Events, not a track.** You get a *sequence of located shot-events*, not a live
   continuous track of a moving shooter.
 
+### 6.1 Drone node — relay + overwatch, not an ear
+
+An LE drone carrying a light node package joins the mesh on the same LoRa link.
+Split its jobs by what a drone is actually good at:
+
+- **Flying relay / gateway (the big win).** Line-of-sight is LoRa's #1 limiter —
+  altitude *is* line-of-sight. A drone at ~100 m has an RF horizon over a whole
+  area: it bridges ground nodes that can't hear each other, extends the mesh over
+  terrain/buildings, and gives **instant aerial backhaul** if ground comms were
+  cut. Its own cellular also gets *better* with altitude. Biggest coverage
+  multiplier in the system, and the easiest role — it's just a gateway that flies.
+- **GPS-timed position reference.** Like a cruiser, it has GPS → it's a valid
+  geometry/time node for the *network*.
+- **Overwatch (the new modality).** The drone **consumes the location the ground
+  mesh triangulated** and slews an EO/IR camera onto it — acoustic net for *where*,
+  drone for *eyes-on* (a just-fired barrel / a fleeing suspect on thermal). This is
+  a capability the ground mesh structurally lacks.
+
+**NOT an acoustic sensor.** Rotor + wind noise sits right on the mic, constantly,
+in the gunshot band — the §4-vehicle wind problem but worse and always-on. A plain
+mic on a multirotor is deaf to a distant muzzle blast. **Do not count the drone as
+an ear in the TDOA solve.** (Rotor-noise cancellation / boom-isolated mics are a
+research sub-project, not part of this architecture.)
+
+**Package + ops constraints.** Weight/power are the limits, so the drone carries
+the *featherweight* node (Pi Zero 2 W ~1 W, or an ESP32-class LoRa relay) — the
+relay role, not the classifier, which suits it since it isn't classifying anyway.
+It's an **on-demand asset** (20–40 min multirotor flight = put it up for an
+incident, not persistent infrastructure). Drone flight is governed by its own FAA
+envelope (Part 107 / public-safety COA / BVLOS) — an operational constraint, not
+an engineering one. And **authenticated join (§7) matters doubly**: an over-the-air
+airborne node is an even more attractive spoof target.
+
+**Symmetry worth naming:** Sentinel's core product *detects hostile drones*; here
+*friendly* LE drones are nodes. Same platform, both sides of the drone coin, one
+mesh — and a drone node can carry the RF/Remote-ID sensor too (`kind='rid'`),
+making it multi-modal.
+
 ---
 
 ## 7. Security — the #1 new requirement (the target is a dispatch system)
@@ -188,6 +231,38 @@ mechanics — it's where "who sees it" is answered.
 | Caliber classifier | P2, **not built** (detector only) |
 | TDOA precise point + time sync | P3 |
 | Dynamic cruiser join / mobile mesh | **this doc** — new |
+| Drone node (relay + gateway + overwatch) | **this doc** — new; reuses the gateway role |
+
+---
+
+## 10.5 Node placement — the site survey (Crow's Eye)
+
+Placement has to solve **two** coverage problems at once, and they trade off:
+
+- **Acoustic set-cover** — every occupiable space within detection range of ≥1 mic
+  (≥3 to localize it), accounting for wall attenuation, room volume, reverb.
+- **RF/LoRa mesh coverage** — every leaf reaching a gateway within 1–2 hops given
+  915 MHz wall losses — a link budget over the *same* geometry.
+
+Both solvers need one input: an accurate interior map. That is exactly what
+**Crow's Eye** (LiDAR interior mapping) produces. The survey pipeline:
+
+1. **Crow's Eye LiDAR-scans** the building → as-built floor plan + wall geometry.
+2. A **placement solver** over that scan outputs node positions optimizing acoustic
+   set-cover **and** RF connectivity, and **emits the coverage map** — the
+   "prove it covers everything" artifact that becomes the install's acceptance /
+   billing document.
+3. **Sentinel installs to the plan**; the coverage map is the QA/acceptance doc.
+
+**Why it matters (business + technical):** two products, two lines of accounting,
+one site visit. The Crow's Eye survey has standalone value (as-builts, RF/acoustic
+heatmap, de-risked drill plan) and is the **razor that lands the Sentinel install +
+monitoring**. It also turns "coverage" from a claim into a *delivered artifact*,
+which is what a test/billing package requires.
+
+**Status:** the LiDAR scan exists (Crow's Eye). The acoustic set-cover + RF
+link-budget **solver over the scan is new capability** — natural extension, reuses
+the scan, **not built.** See [product-ecosystem] cross-product play.
 
 ---
 

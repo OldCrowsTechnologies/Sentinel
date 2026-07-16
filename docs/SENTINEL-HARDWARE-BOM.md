@@ -249,6 +249,28 @@ battery like the fixed nodes.)*
   porous screen, aimed down/aft, never in direct airflow. Conveniently the **same
   geometry** the car-wash and rain problems demand.
 
+### 4b. Drone carry-on node — relay + overwatch (~$45–75)
+
+A **featherweight** package that makes an LE drone a mesh member. It is a flying
+relay, a GPS-timed gateway, and camera overwatch — **not** an acoustic sensor (a
+multirotor's rotor noise makes it deaf to distant shots; see
+[ARCH §6.1](SENTINEL-SHOTS-FIRED-ARCH.md)). Weight/power are the constraints, so it
+carries the relay node, not the classifier.
+
+| Part | Why | Price | Link |
+|---|---|---|---|
+| **Pi Zero 2 W** (or ESP32-S3 for lighter/lower-power) | ~1 W featherweight brain; relay role only | ≈$17 | [PiShop](https://www.pishop.us/product/raspberry-pi-zero-2-w/) |
+| **LoRa radio** (SX1262) | Joins the mesh from altitude — huge line-of-sight relay reach | ≈$15–20 | Waveshare / Adafruit |
+| Small LiPo tap or drone-battery step-down | Power off the airframe or a tiny cell | ≈$8–15 | — |
+| (Overwatch uses the **drone's own EO/IR camera** — no added sensor) | Eyes-on the ground-triangulated location | — | — |
+
+**Why altitude is the win:** line-of-sight is LoRa's #1 limiter, and a drone at
+~100 m has an RF horizon over a whole area — it bridges ground nodes, extends the
+mesh over terrain, and gives instant aerial backhaul if ground comms were cut.
+**On-demand asset** (20–40 min flight), governed by its own FAA envelope (Part
+107 / public-safety COA) — an operational constraint, not an engineering one.
+**Authenticated join (§ security) matters doubly** for an over-the-air node.
+
 ---
 
 ## 5. Connectivity — reaching C2 without the building's network
