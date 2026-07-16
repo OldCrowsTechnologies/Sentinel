@@ -18,10 +18,14 @@ couldn't be confirmed it's marked ≈ or "verify."
 2. **You don't need an exotic high-SPL mic for P1.** Measured: clipping doesn't
    hurt *detection*, and C3GD is 78.5% clipped yet trains to 97% caliber accuracy.
    A $7 120-dB mic is fine to start. High-AOP dual-mic is a **P2** refinement.
-3. **Vehicle detection at highway speed is an open research problem.** The only
-   fielded system (Raytheon Boomerang, $10k, 7-mic mast) caps at 60 mph. Ship the
-   vehicle node **speed-gated** (detect stopped/slow, stand down >~30 mph). See
-   §4. This is honest and still valuable — a parked cruiser covers its scene.
+3. **Vehicle scope is parked + in-town, NOT highway** — which is the tractable
+   regime. A **parked/idling cruiser is already validated**: C3GD (the corpus the
+   trigger scored 97.8% on) was recorded on *stationary* mics, so a parked unit
+   inherits that number directly. **In-town motion (~15–45 mph) is engineering,
+   not open research**, because the wind self-noise that made highway unbeatable
+   (a speed⁶ term) collapses ~20–30 dB by in-town speeds, leaving mostly
+   stagnation pressure that flush-mount + windscreen defeat. Highway (where
+   Boomerang's $10k 7-mic mast caps at 60 mph) is out of scope. See §4.
 
 ---
 
@@ -142,13 +146,28 @@ territory — budget labor, not just parts.
 
 ---
 
-## 4. PATROL VEHICLE NODE — speed-gated (~$155–210)
+## 4. PATROL VEHICLE NODE — parked + in-town (~$155–210)
 
-**Read §0 finding #3 first.** Ship this to detect **when stopped or slow** and
-stand down above ~30 mph (gate on GPS speed). A cruiser spends most of its shift
-parked-on-scene / idling / creeping — which is exactly where the alert matters.
-An 80 mph exterior-detection claim is not substantiable and would get torn apart
-in a Daubert hearing.
+**Scope: parked/idling and in-town driving, not highway** (§0 finding #3).
+
+- **Parked/idling = the easy case, already validated.** C3GD was recorded on
+  stationary mics, so a parked cruiser inherits the 97.8% detection number
+  directly. This is a fixed node that moves. Engine-idle vibration is low-freq /
+  structure-borne — the 300 Hz trigger high-pass + impulse-shape gate handle it.
+  And a unit parked on a scene is exactly where a shooting is likely near it.
+- **In-town motion (~15–45 mph) is tractable.** The wind self-noise that made
+  highway detection an open problem is a speed⁶ term; it collapses ~20–30 dB by
+  in-town speeds, leaving mostly stagnation pressure that a flush mount +
+  windscreen defeat. So the **speed gate is soft, not a cliff**: full confidence
+  parked, a modestly raised threshold in motion, back off only at sustained
+  highway speed. Gate on GPS speed.
+- **The real nuisance is speed-independent: the deputy's own door/trunk slam at
+  ~1 m**, on every stop, at the exact impulse shape the trigger fires on. By
+  design that's a **classifier** job (stage 1 passes slams through on purpose —
+  pinned by test), and it needs a vehicle confounder corpus you can capture
+  yourself trivially: park a cruiser, slam the doors a few hundred times, record.
+- **Don't claim a mph rating or "car-wash safe"** — no mount vendor publishes
+  either, and neither is substantiable in a Daubert hearing.
 
 | Part | Why | Price | Link |
 |---|---|---|---|

@@ -214,8 +214,12 @@ shots" — measured on 8,015 real shots, phones matched dedicated mics for detec
 - [ ] Buyer/contract: SO vs school district (safety grants) — same C2 tenant or separate org?
 - [ ] Evidentiary posture: decision-support only, or pursue court-admissible standards?
 - [ ] How far to chase caliber (P4) vs stop at weapon class (P2)?
-- [ ] **Vehicle speed-gating threshold** (~30 mph?) and whether to pursue a multi-mic
-      coherence array for at-speed detection (the only mechanism with real headroom; big lift).
+- [x] **Vehicle scope = parked + in-town, not highway.** Parked/idling is already
+      validated (C3GD was recorded on stationary mics → 97.8% applies directly). In-town
+      (~15–45 mph) is tractable (the speed⁶ wind self-noise collapses ~20–30 dB below its
+      highway level). Soft speed-gate on GPS, not a cliff. Highway out of scope (would need a
+      Boomerang-class multi-mic coherence array). Remaining: capture a vehicle door/trunk-slam
+      confounder corpus (self-serve — no range needed) for the classifier.
 - [ ] **Human-in-the-loop or not?** ShotSpotter's cost IS its review center; skipping it is
       the 10–50× cost win but takes the wrongful-dispatch liability onto the classifier directly.
 
