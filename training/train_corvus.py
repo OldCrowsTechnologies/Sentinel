@@ -220,11 +220,18 @@ def build_open_set(Xs, y, active_labels):
         "threatIndices": threat,
         "categoryIndices": categories,
         "specificDroneIndices": specific,
-        # Provisional thresholds (tune on real audio):
-        #   droneGate   : droneness (1 - sum P[nonThreat]) above this => a UAS is present
-        #   matchProb   : best specific-model prob below this => not a confident brand match
+        # Thresholds tuned for PRECISION over specificity: prefer "Unknown build"
+        # (still a drone) over a wrong brand call-out, and "None" over a false drone.
+        #   droneGate   : droneness (1 - sum P[nonThreat]) above this => a UAS is present.
+        #                 Raised 0.5->0.62 so quiet/ambiguous ambient stops registering as
+        #                 a drone at all (fixes "DJI micro when almost silent").
+        #   matchProb   : best specific-model prob below this => NOT a confident brand match
+        #                 -> falls back to acoustic category or "Unknown build". Raised
+        #                 0.6->0.92 so thin model classes can't emit false brand IDs.
         #   oodDistance : nearest-known normalized distance above this => out-of-distribution
-        "thresholds": {"droneGate": 0.5, "matchProb": 0.6, "oodDistance": 2.5},
+        #                 -> "Unknown build". Tightened 2.5->1.15 so only genuinely close
+        #                 matches get a brand; everything else is called an unknown drone.
+        "thresholds": {"droneGate": 0.62, "matchProb": 0.92, "oodDistance": 1.15},
     }
 
 

@@ -41,7 +41,9 @@ type SubScreen = 'detections' | 'analysis' | 'training' | null;
 // NOTE: the ElevenLabs key is NEVER bundled here. Any EXPO_PUBLIC_* var is baked
 // into the APK and is trivially extractable, so voice synthesis is proxied
 // server-side via ocws-site (/api/elevenlabs/speak). See lib/corvusVoice.ts.
-const SILENCE_RMS = 0.004; // below this, treat window as silence (force "None")
+const SILENCE_RMS = 0.006; // below this, treat window as silence (force "None").
+// Raised from 0.004: near-silent rooms were slipping past and getting a spurious
+// (often branded) drone call. Prefer a missed faint contact over a false alarm.
 
 export default function App() {
   const [fontsLoaded] = useFonts({
