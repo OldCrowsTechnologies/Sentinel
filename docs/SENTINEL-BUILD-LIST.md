@@ -74,6 +74,21 @@ field-capture approach.
 
 ---
 
+## 1b. Acoustic direction-finding (DOA) via mic-array sensor node
+
+**Status:** planned. From the UWF **GUARD/Vigil** work (see
+[GUARD-VIGIL-INTEGRATION.md](GUARD-VIGIL-INTEGRATION.md)). Mic array (ReSpeaker/UMA-8) +
+SRP-PHAT/GCC-PHAT gives **true acoustic bearing** — closes Sentinel's #1 gap (single-mic =
+no direction) and feeds the Shots-Fired TDOA plan. Belongs on the **external sensor node**
+(phones lack the array). High value.
+
+## 1c. Proper HF-dataset model integration (class-weighted)
+
+**Status:** planned. The MIT `geronimobasso/drone-audio-detection-samples` (180k clips) is a
+real asset, but a naive retrain regressed fixed-wing detection (100%→17–33%). Needs
+class-weighted/balanced training + real-clip held-out tuning, NOT a dump. Tooling +
+findings in [GUARD-VIGIL-INTEGRATION.md](GUARD-VIGIL-INTEGRATION.md). Build-11 stays live.
+
 ## 2. Multi-agency joint operations / geofenced mutual aid
 
 **Status:** planned (post-demo)
