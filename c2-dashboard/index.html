@@ -60,6 +60,18 @@
   .btn-export:disabled{opacity:.4;cursor:default}
   .btn-close2{flex:0 0 84px;background:var(--panel2);border:1px solid var(--line)!important;color:var(--dim)}
   #q-drawbanner{display:none;position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:70;background:rgba(15,22,32,.95);border:1px solid var(--teal);border-radius:8px;padding:9px 16px;font-size:13px;color:var(--teal)}
+  /* print / PDF report (print-only; Save-as-PDF in the browser print dialog) */
+  #printarea{display:none}
+  @media print{
+    body>*{display:none!important}
+    #printarea{display:block!important;color:#000;font-family:Arial,Helvetica,sans-serif}
+    #printarea h1{font-size:18px;margin:0 0 6px}
+    #printarea .m{font-size:12px;color:#222;margin:2px 0}
+    #printarea table{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:10px}
+    #printarea th,#printarea td{border:1px solid #999;padding:3px 6px;text-align:left}
+    #printarea thead th{background:#eee}
+    @page{margin:14mm}
+  }
   .row .meta{color:var(--dim);font-size:11px}
   .row .cf{font-family:var(--mono);color:var(--dim);text-align:right}
   /* login */
@@ -119,6 +131,7 @@
   </aside>
 </div>
 
+<div id="printarea"></div>
 <div id="q-drawbanner">Click two corners on the map to set the area — <b>Esc</b> to cancel</div>
 <div id="report">
   <div class="report-card">
@@ -139,8 +152,13 @@
     <div class="q-summary" id="q-summary">Set a time range and run the query.</div>
     <div class="report-actions">
       <button class="btn-run" id="q-run">Run query</button>
-      <button class="btn-export" id="q-export" disabled>Export CSV</button>
       <button class="btn-close2" id="q-close">Close</button>
+    </div>
+    <label style="margin-top:14px">Export</label>
+    <div class="report-actions">
+      <button class="btn-export" id="q-print" disabled>Print / PDF</button>
+      <button class="btn-export" id="q-csv" disabled>CSV</button>
+      <button class="btn-export" id="q-xlsx" disabled>Excel</button>
     </div>
   </div>
 </div>
@@ -276,7 +294,7 @@ async function runReportQuery(){
   if(!supa||!orgId){ $('q-summary').textContent='Not connected.'; return; }
   const fromV=$('q-from').value, toV=$('q-to').value;
   if(!fromV||!toV){ $('q-summary').textContent='Set both a From and To time.'; return; }
-  $('q-summary').textContent='Querying…'; $('q-export').disabled=true;
+  $('q-summary').textContent='Querying…'; ['q-print','q-csv','q-xlsx'].forEach(id=>$(id).disabled=true);
   const { data, error } = await supa.from('detections').select('*')
     .gte('ts',new Date(fromV).toISOString()).lte('ts',new Date(toV).toISOString())
     .order('ts',{ascending:true}).limit(10000);
@@ -289,7 +307,42 @@ async function runReportQuery(){
   const parts=Object.entries(byLabel).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`);
   const areaTxt=bounds?`area ${bounds.minLat.toFixed(3)},${bounds.minLon.toFixed(3)} → ${bounds.maxLat.toFixed(3)},${bounds.maxLon.toFixed(3)}`:'anywhere';
   $('q-summary').innerHTML=`<b>${rows.length}</b> detection(s) · ${areaTxt}<br>${parts.join(' · ')||'—'}`;
-  $('q-export').disabled=rows.length===0;
+  ['q-print','q-csv','q-xlsx'].forEach(id=>$(id).disabled=rows.length===0);
+}
+function reportContext(){
+  const fromV=$('q-from').value, toV=$('q-to').value, bounds=currentAreaBounds();
+  const areaTxt=bounds?`${bounds.minLat.toFixed(4)}, ${bounds.minLon.toFixed(4)} → ${bounds.maxLat.toFixed(4)}, ${bounds.maxLon.toFixed(4)}`:'Anywhere';
+  const byLabel={}; for(const r of lastReportRows) byLabel[r.label]=(byLabel[r.label]||0)+1;
+  const fname=`sentinel-report_${(fromV||'').replace(/[:T]/g,'-')}_to_${(toV||'').replace(/[:T]/g,'-')}`;
+  return {fromV,toV,bounds,areaTxt,byLabel,fname};
+}
+// Print / PDF: fill a print-only container and open the browser print dialog
+// (which offers Save-as-PDF). No popup, no external library.
+function printReport(){
+  if(!lastReportRows.length) return;
+  const {fromV,toV,areaTxt,byLabel}=reportContext();
+  const summary=Object.entries(byLabel).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(' · ')||'—';
+  const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const rows=lastReportRows.map(r=>`<tr><td>${new Date(r.ts).toLocaleString()}</td><td>${esc(csFor(r))}</td><td>${esc(r.kind)}</td><td>${esc(r.label)}</td><td>${r.confidence!=null?Math.round(r.confidence):''}</td><td>${r.peak_db??''}</td><td>${esc(r.band)}</td><td>${r.range_ft??''}</td><td>${r.lat!=null?r.lat.toFixed(5):''}</td><td>${r.lon!=null?r.lon.toFixed(5):''}</td></tr>`).join('');
+  $('printarea').innerHTML=`<h1>Corvus Sentinel — Detection Report</h1>
+    <div class="m">Time range: ${esc(fromV)||'—'} → ${esc(toV)||'—'}</div>
+    <div class="m">Area: ${esc(areaTxt)}</div>
+    <div class="m">Total detections: ${lastReportRows.length} &nbsp;·&nbsp; By type: ${esc(summary)}</div>
+    <div class="m">Generated: ${new Date().toLocaleString()}</div>
+    <table><thead><tr><th>Time</th><th>Unit</th><th>Kind</th><th>Label</th><th>Conf %</th><th>Peak dB</th><th>Band</th><th>Range ft</th><th>Lat</th><th>Lon</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="m" style="margin-top:10px">Proprietary &amp; Confidential — Old Crows Wireless</div>`;
+  window.print();
+}
+// Excel (.xlsx) via SheetJS, loaded on demand. Falls back to CSV guidance offline.
+async function exportReportXlsx(){
+  if(!lastReportRows.length) return;
+  let XLSX;
+  try{ XLSX=await import('https://esm.sh/xlsx@0.18.5'); }
+  catch(e){ alert('Excel export needs internet to load the writer. Use CSV (Excel opens it natively).'); return; }
+  const data=lastReportRows.map(r=>({Time:new Date(r.ts).toISOString(),Unit:csFor(r),Kind:r.kind||'',Label:r.label||'','Conf %':r.confidence!=null?Math.round(r.confidence):'','Peak dB':r.peak_db??'',Band:r.band||'','Range ft':r.range_ft??'',Lat:r.lat??'',Lon:r.lon??''}));
+  const ws=XLSX.utils.json_to_sheet(data);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Detections');
+  XLSX.writeFile(wb,reportContext().fname+'.xlsx');
 }
 function exportReportCsv(){
   if(!lastReportRows.length) return;
@@ -311,7 +364,9 @@ function exportReportCsv(){
 $('reportbtn').onclick=openReport;
 $('q-close').onclick=closeReport;
 $('q-run').onclick=runReportQuery;
-$('q-export').onclick=exportReportCsv;
+$('q-print').onclick=printReport;
+$('q-csv').onclick=exportReportCsv;
+$('q-xlsx').onclick=exportReportXlsx;
 [...document.querySelectorAll('.areabtn[data-area]')].forEach(b=>b.onclick=()=>setArea(b.dataset.area));
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ if(drawState){drawState=null;$('q-drawbanner').style.display='none';$('report').style.display='flex';setArea('any');} else if($('report').style.display==='flex') closeReport(); } });
 async function connect(){
