@@ -35,3 +35,4 @@ assets/branding/*_original_backup*
 # Sensor node runtime config holds a seat code + session token.
 sensor-node/node.json
 sensor-node/.session.json
+data/staged-hf/   # re-pullable HF subset (training/pull_hf_dataset.py)

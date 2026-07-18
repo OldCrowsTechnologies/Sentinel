@@ -34,6 +34,8 @@ HOP = 256           # hop length (samples)
 N_MELS = 20         # number of mel bands
 FMIN = 50.0         # lowest mel edge (Hz)
 FMAX = 8000.0       # highest mel edge (Hz) == Nyquist for SR=16000
+# NOTE: tried GUARD's 80-4000 Hz tightening; it regressed fixed-wing detection
+# (harmonics above 4 kHz matter for our multi-class model), so reverted to full band.
 
 # Noise rejection: a 1st-order IIR high-pass applied (after DC removal, before
 # framing). The corner frequency is EXPORTED in the model JSON (dsp.highPass.fc)
