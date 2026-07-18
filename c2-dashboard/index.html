@@ -223,6 +223,8 @@ const positions=new Map();       // user_id -> position row (carries call_sign)
 const detsByNodeType=new Map();  // `${node}|${type}` -> latest detection
 const RF_KINDS=new Set(['lora','elrs','ocusync','control-link','unknown']); // SDR control-link kinds
 const rfByNode=new Map();         // node_id -> latest RF control-link (presence, not fused)
+const seenDet=new Set();          // `${node}|${seq}` seen, so realtime + polling never double-log
+let lastDetTs=null;               // newest detection ts ingested (for incremental polling)
 let orgId=null, map=null, unsub=null;
 // Detections aren't tagged with a call sign — resolve it from the unit's position.
 const csFor=d=>{const p=positions.get(d.user_id);return (p&&p.call_sign)||d.call_sign||d.node_id||'unit';};
@@ -391,17 +393,19 @@ async function start(){
   initMap();
   // snapshot
   const { data:pos } = await supa.from('positions').select('*'); (pos||[]).forEach(onPosition);
-  const { data:det } = await supa.from('detections').select('*').order('ts',{ascending:false}).limit(200);
-  (det||[]).reverse().forEach(d=>onDetection(d,true));
+  const snap=(await supa.from('detections').select('*').order('ts',{ascending:false}).limit(200)).data||[];
+  lastDetTs = snap.length ? snap[0].ts : null;              // newest (desc order)
+  snap.slice().reverse().forEach(d=>onDetection(d,true));
   redraw();
-  // realtime
+  // realtime (instant updates when the socket is healthy)...
   const ch=supa.channel('fleet')
     .on('postgres_changes',{event:'*',schema:'public',table:'positions'},p=>{onPosition(p.new);redraw();})
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'detections'},p=>{onDetection(p.new);redraw();})
     .subscribe();
-  // Periodic tick so roster staleness + RF-marker aging refresh even if a unit
-  // goes silent (no incoming event to trigger a redraw).
-  const tick=setInterval(redraw,10000);
+  // ...and a polling backstop that keeps the dashboard live even if realtime drops
+  // (the stale-after-a-few-minutes bug). Every 8s: pull new detections + positions,
+  // dedup, redraw. Self-healing; no dependence on the WebSocket staying up.
+  const tick=setInterval(pollFleet,8000);
   unsub=()=>{clearInterval(tick);supa.removeChannel(ch);};
 }
 function showExpiry(exp){
@@ -413,10 +417,27 @@ function showExpiry(exp){
 function onPosition(p){ if(p&&p.user_id) positions.set(p.user_id,p); }
 function onDetection(d,silent){
   if(!d) return;
+  const key=(d.node_id||d.user_id)+'|'+d.seq;
+  const dup=seenDet.has(key); if(!dup) seenDet.add(key);
   if(RF_KINDS.has(d.kind)) rfByNode.set((d.node_id||d.user_id),d);            // RF: presence marker, NOT acoustic fusion
   else if(!NON_THREAT.has(d.label)) detsByNodeType.set((d.node_id||d.user_id)+'|'+d.label,d);
-  addLog(d); if(!silent) flash(d);
+  if(!dup){ addLog(d); if(!silent) flash(d); }                                // log/alert once per detection
   $('dets').textContent=($('log').childElementCount)+' detections';
+}
+// Polling backstop: re-fetch positions + any new detections every cycle so the
+// dashboard STAYS LIVE even when the realtime WebSocket silently drops (the reason
+// it went stale after a few minutes). Incremental via lastDetTs; dedup via seenDet.
+async function pollFleet(){
+  if(!supa||!orgId) return;
+  try{
+    const { data:pos } = await supa.from('positions').select('*');
+    (pos||[]).forEach(onPosition);
+    let q=supa.from('detections').select('*').order('ts',{ascending:true}).limit(1000);
+    if(lastDetTs) q=q.gt('ts',lastDetTs);
+    const { data:det } = await q;
+    (det||[]).forEach(d=>{ onDetection(d); if(!lastDetTs||d.ts>lastDetTs) lastDetTs=d.ts; });
+  }catch(e){ /* transient network; next cycle retries */ }
+  finally{ redraw(); }                                                        // also ages roster/RF markers
 }
 
 // ── map ─────────────────────────────────────────────────────────────────────
