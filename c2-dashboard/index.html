@@ -8,7 +8,7 @@
 <style>
   :root{
     --bg:#0a0e14; --panel:#0f1620; --panel2:#131d2a; --line:#1e2c3d;
-    --ink:#e8eef5; --dim:#8aa0b6; --teal:#2fd6c4; --gold:#e0b64a; --red:#ff5a5a; --amber:#ffb020;
+    --ink:#e8eef5; --dim:#8aa0b6; --teal:#2fd6c4; --gold:#e0b64a; --red:#ff5a5a; --amber:#ffb020; --rf:#9d7bff;
     --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   }
@@ -37,6 +37,9 @@
   .row .lbl{font-weight:600}
   .row .lbl.threat{color:var(--gold)}
   .row .lbl.unknown{color:var(--amber)}
+  .row .lbl.rf{color:var(--rf)}
+  .rfbadge{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.5px;color:#120a26;background:var(--rf);border-radius:4px;padding:1px 5px;margin-right:6px;vertical-align:1px}
+  .chip.rf{color:var(--rf)}
   .row .meta{color:var(--dim);font-size:11px}
   .row .cf{font-family:var(--mono);color:var(--dim);text-align:right}
   /* login */
@@ -80,6 +83,7 @@
     <div class="spacer"></div>
     <span class="chip" id="fleet">0 units</span>
     <span class="chip" id="dets">0 detections</span>
+    <span class="chip rf" id="rflinks">0 RF links</span>
     <span class="chip" id="expiry">demo —</span>
     <button class="fitbtn" id="fit" title="Zoom to frame all active units">Fit to units</button>
   </header>
@@ -131,7 +135,15 @@ function seed(ns){let a=1/0,b=-1/0,c=1/0,d=-1/0,mr=0;for(const n of ns){a=Math.m
 function solve(ns){let{x,y}=seed(ns),H11=0,H12=0,H22=0;for(let it=0;it<ITERS;it++){H11=H12=H22=0;let g1=0,g2=0;for(const n of ns){const dx=x-n.x,dy=y-n.y,dd=Math.hypot(dx,dy)||1e-6,jx=dx/dd,jy=dy/dd,f=dd-n.r;H11+=n.w*jx*jx;H12+=n.w*jx*jy;H22+=n.w*jy*jy;g1+=n.w*jx*f;g2+=n.w*jy*f;}const dp=DAMP*(H11+H22+1e-9),A=H11+dp,C=H22+dp,B=H12,det=A*C-B*B;if(!isFinite(det)||Math.abs(det)<1e-12)break;const dx=-(C*g1-B*g2)/det,dy=-(A*g2-B*g1)/det;x+=dx;y+=dy;if(Math.hypot(dx,dy)<1e-4)break;}const det=H11*H22-H12*H12;if(!isFinite(det)||Math.abs(det)<1e-12)return{x,y,cov:[1/0,0,1/0],ok:false};return{x,y,cov:[H22/det,-H12/det,H11/det],ok:true};}
 function ellipse(cov){const[cxx,cxy,cyy]=cov,tr=(cxx+cyy)/2,df=Math.sqrt(((cxx-cyy)/2)**2+cxy*cxy),l1=tr+df,l2=tr-df;const a=Math.sqrt(Math.max(l1,0)),b=Math.sqrt(Math.max(l2,0));let ang=90-r2d(0.5*Math.atan2(2*cxy,cxx-cyy));ang=((ang%360)+360)%360;return{a,b,ang};}
 function fuse(byNode){ // byNode: Map nodeId -> latest detection row (same type)
-  const rep=[...byNode.values()].filter(r=>r.lat!=null&&r.lon!=null);
+  // Anchor each contributing node at its detection's GPS, else its last known
+  // roster position. Sentinel nodes deploy stationary and stream position on a
+  // heartbeat, so a node whose detection row has momentarily-null GPS still COUNTS
+  // in the fusion instead of silently dropping out (why some fixes never reached 3).
+  const rep=[...byNode.values()].map(r=>{
+    if(r.lat!=null&&r.lon!=null) return r;
+    const p=positions.get(r.user_id);
+    return (p&&p.lat!=null&&p.lon!=null)?{...r,lat:p.lat,lon:p.lon}:r;
+  }).filter(r=>r.lat!=null&&r.lon!=null);
   if(rep.length<3) return {fix:null, n:rep.length};
   const la0=rep.reduce((s,r)=>s+r.lat,0)/rep.length, lo0=rep.reduce((s,r)=>s+r.lon,0)/rep.length;
   const ns=rep.map(r=>{const{x,y}=toLocal(r.lat,r.lon,la0,lo0);const rM=(r.range_ft||0)*FT_M;const sd=Math.max(REL_SD*rM,MIN_SD);return{x,y,r:rM,w:Math.max(r.confidence||1,1)/100/(sd*sd)};});
@@ -144,6 +156,8 @@ function ellipsePoly(lat,lon,el,pts=48){const th=d2r(90-el.ang),ct=Math.cos(th),
 const NON_THREAT=new Set(['None','Bird','Manned rotorcraft','Manned fixed-wing']);
 const positions=new Map();       // user_id -> position row (carries call_sign)
 const detsByNodeType=new Map();  // `${node}|${type}` -> latest detection
+const RF_KINDS=new Set(['lora','elrs','ocusync','control-link','unknown']); // SDR control-link kinds
+const rfByNode=new Map();         // node_id -> latest RF control-link (presence, not fused)
 let orgId=null, map=null, unsub=null;
 // Detections aren't tagged with a call sign — resolve it from the unit's position.
 const csFor=d=>{const p=positions.get(d.user_id);return (p&&p.call_sign)||d.call_sign||d.node_id||'unit';};
@@ -190,7 +204,10 @@ async function start(){
     .on('postgres_changes',{event:'*',schema:'public',table:'positions'},p=>{onPosition(p.new);redraw();})
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'detections'},p=>{onDetection(p.new);redraw();})
     .subscribe();
-  unsub=()=>supa.removeChannel(ch);
+  // Periodic tick so roster staleness + RF-marker aging refresh even if a unit
+  // goes silent (no incoming event to trigger a redraw).
+  const tick=setInterval(redraw,10000);
+  unsub=()=>{clearInterval(tick);supa.removeChannel(ch);};
 }
 function showExpiry(exp){
   if(!exp){ $('expiry').textContent='live'; return; }
@@ -201,7 +218,8 @@ function showExpiry(exp){
 function onPosition(p){ if(p&&p.user_id) positions.set(p.user_id,p); }
 function onDetection(d,silent){
   if(!d) return;
-  if(!NON_THREAT.has(d.label)) detsByNodeType.set((d.node_id||d.user_id)+'|'+d.label,d);
+  if(RF_KINDS.has(d.kind)) rfByNode.set((d.node_id||d.user_id),d);            // RF: presence marker, NOT acoustic fusion
+  else if(!NON_THREAT.has(d.label)) detsByNodeType.set((d.node_id||d.user_id)+'|'+d.label,d);
   addLog(d); if(!silent) flash(d);
   $('dets').textContent=($('log').childElementCount)+' detections';
 }
@@ -226,6 +244,12 @@ function initMap(){
     map.addLayer({id:'unit-lbl',type:'symbol',source:'units',layout:{'text-field':['get','cs'],'text-font':['Open Sans Regular'],'text-offset':[0,1.2],'text-size':11},paint:{'text-color':'#cfe0ee','text-halo-color':'#04121e','text-halo-width':1.2}});
     map.addLayer({id:'dets',type:'circle',source:'dets',paint:{'circle-radius':6,'circle-color':['case',['get','unknown'],'#ffb020','#e0b64a'],'circle-stroke-color':'#1a1207','circle-stroke-width':2}});
     map.on('click','dets',e=>{const p=e.features[0].properties;new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>${p.label}</b><br>${Math.round(p.conf)}% · ~${Math.round(p.range)} ft<br>${p.cs||''}`).addTo(map);});
+    // RF control links (ELRS/LoRa) — distinct violet presence marker with a halo.
+    map.addSource('rf',{type:'geojson',data:fc([])});
+    map.addLayer({id:'rf-halo',type:'circle',source:'rf',paint:{'circle-radius':18,'circle-color':'#9d7bff','circle-opacity':0.16}});
+    map.addLayer({id:'rf',type:'circle',source:'rf',paint:{'circle-radius':7,'circle-color':'#9d7bff','circle-stroke-color':'#140a2e','circle-stroke-width':2}});
+    map.addLayer({id:'rf-lbl',type:'symbol',source:'rf',layout:{'text-field':['get','label'],'text-font':['Open Sans Regular'],'text-offset':[0,1.3],'text-size':10},paint:{'text-color':'#cbbcff','text-halo-color':'#0a0618','text-halo-width':1.2}});
+    map.on('click','rf',e=>{const p=e.features[0].properties;new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b style="color:#9d7bff">${p.label}</b><br>${p.band||'sub-GHz'} · ${p.peak} dB<br>${p.cs||''}`).addTo(map);});
     redraw();
   });
 }
@@ -244,6 +268,10 @@ function redraw(){
   const recent=[...detsByNodeType.values()].filter(d=>now-new Date(d.ts).getTime()<90000);
   map.getSource('dets').setData(fc(recent.filter(d=>d.lat!=null).map(d=>pt(d.lon,d.lat,{label:d.label,conf:d.confidence,range:d.range_ft,unknown:!!d.unknown_build,cs:csFor(d)}))));
   map.getSource('rings').setData(fc(recent.filter(d=>d.lat!=null&&d.range_ft>0).map(d=>ringPoly(d.lat,d.lon,d.range_ft))));
+  // RF control links (ELRS/LoRa) — violet presence markers; no range ring, no fusion.
+  const rfRecent=[...rfByNode.values()].filter(d=>now-new Date(d.ts).getTime()<90000);
+  map.getSource('rf').setData(fc(rfRecent.filter(d=>d.lat!=null).map(d=>pt(d.lon,d.lat,{label:d.label,band:d.band||'',peak:Math.round(d.peak_db||0),cs:csFor(d)}))));
+  $('rflinks').textContent=rfRecent.length+' RF link'+(rfRecent.length===1?'':'s');
   // fuse per type
   const byType=new Map();
   for(const d of recent){ const k=d.label; if(!byType.has(k))byType.set(k,new Map()); byType.get(k).set(d.node_id||d.user_id,d); }
@@ -254,18 +282,26 @@ function redraw(){
 }
 function renderRoster(now){
   const r=$('roster'); if(!positions.size){r.innerHTML='<div class="meta" style="font-size:12px">Waiting for units…</div>';return;}
-  r.innerHTML=[...positions.values()].map(p=>{const stale=now-new Date(p.ts).getTime()>30000;return `<div class="u"><span class="dot ${stale?'stale':''}"></span>${p.call_sign||'unit'} <span class="meta" style="margin-left:auto">${p.lat!=null?p.lat.toFixed(4)+','+p.lon.toFixed(4):'no GPS'}</span></div>`;}).join('');
+  r.innerHTML=[...positions.values()].map(p=>{const stale=now-new Date(p.ts).getTime()>45000;return `<div class="u"><span class="dot ${stale?'stale':''}"></span>${p.call_sign||'unit'} <span class="meta" style="margin-left:auto">${p.lat!=null?p.lat.toFixed(4)+','+p.lon.toFixed(4):'no GPS'}</span></div>`;}).join('');
 }
 
 // ── log ─────────────────────────────────────────────────────────────────────
 function addLog(d){
   const log=$('log'); const row=document.createElement('div'); row.className='row';
-  const threat=!NON_THREAT.has(d.label); const cls=d.unknown_build?'unknown':(threat?'threat':'');
   const t=new Date(d.ts||Date.now()); const hh=t.toLocaleTimeString([],{hour12:false});
-  row.innerHTML=`<span class="t">${hh}</span>
-    <span><span class="lbl ${cls}">${d.label}${d.unknown_build?' ⚠':''}</span>
-    <div class="meta">${csFor(d)} · ~${Math.round(d.range_ft||0)} ft${d.kind&&d.kind!=='acoustic'?' · '+d.kind:''}</div></span>
-    <span class="cf">${Math.round(d.confidence||0)}%</span>`;
+  if(RF_KINDS.has(d.kind)){
+    // RF control link: violet, band + peak-over-floor dB (no % / no range — presence only).
+    row.innerHTML=`<span class="t">${hh}</span>
+      <span><span class="rfbadge">RF</span><span class="lbl rf">${d.label}</span>
+      <div class="meta">${csFor(d)} · ${d.band||'sub-GHz'} · control link</div></span>
+      <span class="cf" style="color:var(--rf)">${Math.round(d.peak_db||0)} dB</span>`;
+  } else {
+    const threat=!NON_THREAT.has(d.label); const cls=d.unknown_build?'unknown':(threat?'threat':'');
+    row.innerHTML=`<span class="t">${hh}</span>
+      <span><span class="lbl ${cls}">${d.label}${d.unknown_build?' ⚠':''}</span>
+      <div class="meta">${csFor(d)} · ~${Math.round(d.range_ft||0)} ft</div></span>
+      <span class="cf">${Math.round(d.confidence||0)}%</span>`;
+  }
   log.prepend(row);
   while(log.childElementCount>300) log.lastChild.remove();
 }

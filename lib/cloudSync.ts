@@ -20,6 +20,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import type { ContactReport } from './meshTypes';
 import type { GeoFix } from './locationService';
+import type { RfLinkDetection } from './rfSensorService';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -190,6 +191,55 @@ export async function pushDetection(r: ContactReport): Promise<void> {
       bearing: r.bearing,
       unknown_build: r.unknownBuild,
       ts: new Date(r.t || Date.now()).toISOString(),
+    },
+    { onConflict: 'org_id,node_id,seq', ignoreDuplicates: true }
+  );
+}
+
+/** Human-readable call-out per RF control-link kind (shown on the C2 log/map). */
+const RF_KIND_LABEL: Record<RfLinkDetection['kind'], string> = {
+  lora: 'LoRa link',
+  elrs: 'ExpressLRS',
+  ocusync: 'OcuSync',
+  'control-link': 'Control link',
+  unknown: 'RF link',
+};
+
+/**
+ * Publish an RF control-link detection (ELRS / LoRa / etc., sniffed by the SDR
+ * dongle) to C2 so command sees sub-GHz control links the instant they're heard.
+ * Presence-only: range_ft = 0 and bearing = -1 unless a directional antenna gave
+ * one (the dongle can't range or (mono) bearing). Rides the same `detections`
+ * table + (org,node,seq) dedup as acoustic contacts. No-op until enrolled.
+ */
+export async function pushRfLink(
+  link: RfLinkDetection,
+  fix: GeoFix | null,
+  nodeId: string,
+  seq: number
+): Promise<void> {
+  const c = loadClient();
+  if (!c || !orgId || !userId) return;
+  await c.from('detections').upsert(
+    {
+      org_id: orgId,
+      user_id: userId,
+      node_id: nodeId,
+      seq,
+      kind: link.kind,
+      label: RF_KIND_LABEL[link.kind] ?? 'RF link',
+      // score is a dB strength (peak-over-floor), not a %; C2 shows band + peak_db
+      // for RF rows. Stored clamped so the numeric column stays sane.
+      confidence: Math.round(Math.max(0, Math.min(100, link.score))),
+      band: link.band,
+      peak_db: Math.round(link.peakDb),
+      lat: fix?.lat ?? null,
+      lon: fix?.lon ?? null,
+      pos_acc: fix?.accuracy ?? null,
+      range_ft: 0,
+      bearing: link.bearing ?? -1,
+      unknown_build: false,
+      ts: new Date(link.timestamp || Date.now()).toISOString(),
     },
     { onConflict: 'org_id,node_id,seq', ignoreDuplicates: true }
   );

@@ -6,6 +6,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONTS, RADII, BG_GRADIENT } from '../lib/theme';
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -182,8 +183,12 @@ const TABS: { key: TabKey; icon: IconName; label: string }[] = [
 ];
 
 export function TabBar({ active, onChange }: { active: TabKey; onChange: (t: TabKey) => void }) {
+  // Pad the bar above the system nav bar (gesture pill OR 3-button nav) so tabs
+  // are never covered. insets.bottom is 0 on devices without a bottom inset, where
+  // the base padding still applies. Fixes the every-device overlap.
+  const insets = useSafeAreaInsets();
   return (
-    <View style={tb.bar}>
+    <View style={[tb.bar, { paddingBottom: Math.max(10, insets.bottom) + 8 }]}>
       {TABS.map((t) => {
         const on = t.key === active;
         const c = on ? COLORS.teal : COLORS.muted;
@@ -231,7 +236,7 @@ const btn = StyleSheet.create({
 });
 
 const tb = StyleSheet.create({
-  bar: { flexDirection: 'row', paddingTop: 9, paddingBottom: 22, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.divider, backgroundColor: '#0A1322' },
+  bar: { flexDirection: 'row', paddingTop: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.divider, backgroundColor: '#0A1322' },
   tab: { flex: 1, alignItems: 'center', gap: 3 },
   label: { fontFamily: FONTS.display, fontSize: 9.5, letterSpacing: 0.5 },
 });

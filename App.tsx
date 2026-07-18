@@ -24,7 +24,8 @@ import { reportFromDetection, type ContactReport } from './lib/meshTypes';
 import { startMesh, stopMesh, broadcastReport } from './lib/meshTransport';
 import { installRtlTransport } from './lib/rtlTransportNative';
 import { subscribeRfLinks, type RfLinkDetection } from './lib/rfSensorService';
-import { initCloud, pushDetection, pushPosition } from './lib/cloudSync';
+import { initCloud, pushDetection, pushPosition, pushRfLink } from './lib/cloudSync';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { fuseReports, type FusedTrack } from './lib/meshFusion';
 import CorvusVoice from './lib/corvusVoice';
 import { writeReport } from './lib/reportGenerator';
@@ -117,10 +118,42 @@ export default function App() {
   const [rfLinks, setRfLinks] = useState<RfLinkDetection[]>([]);
   useEffect(() => subscribeRfLinks(setRfLinks), []);
 
+  // C2 cloud tier for RF: push each NEW dongle-detected control link (ELRS/LoRa)
+  // straight to command so the C2 map + log show sub-GHz links live. Deduped by
+  // detection timestamp; reuses this node's id + the shared seq counter. Inert
+  // until enrolled (pushRfLink no-ops), so it's safe to run ungated.
+  const lastRfPushRef = useRef(0);
+  useEffect(() => {
+    for (const link of rfLinks) {
+      if (link.timestamp <= lastRfPushRef.current) continue;
+      lastRfPushRef.current = Math.max(lastRfPushRef.current, link.timestamp);
+      void pushRfLink(link, getLastFix(), nodeIdRef.current, seqRef.current++);
+    }
+  }, [rfLinks]);
+
   // C2 cloud tier: restore any existing agency enrollment at startup. No-op until
   // a Supabase backend is configured + the device is enrolled with a seat code.
   useEffect(() => {
     void initCloud();
+  }, []);
+
+  // Presence heartbeat: a Sentinel node deploys STATIONARY (a phone/tablet parked
+  // like a cruiser in a speed trap), so it must stay LIVE on C2 and keep counting
+  // toward fusion even when it's NOT actively monitoring. Location + position push
+  // therefore run for the whole foreground lifetime, decoupled from monitoring.
+  // The beat re-stamps ts each cycle, so a stationary (non-moving) node stays green;
+  // 15s < the C2 stale window (45s). pushPosition no-ops until enrolled.
+  useEffect(() => {
+    (async () => {
+      if (await initLocation()) await startLocation();
+    })();
+    const beat = () => {
+      const fix = getLastFix();
+      if (fix) void pushPosition(fix);
+    };
+    beat();
+    const id = setInterval(beat, 15000);
+    return () => clearInterval(id);
   }, []);
 
   // Internet fleet-sync tier: while monitoring, every 30s flush queued findings +
@@ -130,8 +163,6 @@ export default function App() {
     if (!isMonitoring) return;
     const id = setInterval(() => {
       void syncFindings(nodeIdRef.current);
-      const fix = getLastFix();
-      if (fix) void pushPosition(fix); // keep C2 map live with this deputy's position
     }, 30000);
     return () => clearInterval(id);
   }, [isMonitoring]);
@@ -276,7 +307,8 @@ export default function App() {
     if (!audio) return;
     if (isMonitoring) {
       await audio.stopMonitoring();
-      stopLocation();
+      // NB: location keeps running (presence heartbeat) so a stopped-but-enrolled
+      // node stays live on C2 and keeps anchoring fusion. Only the mic stops here.
       setMonitoring(false);
       setStatus('Stopped.');
       setLevel(0);
@@ -330,7 +362,7 @@ export default function App() {
   const stopForExclusiveMic = () => {
     if (isMonitoring) {
       audioRef.current?.stopMonitoring();
-      stopLocation();
+      // location stays up (presence heartbeat) — only the mic is exclusive.
       setMonitoring(false);
       setLevel(0);
     }
@@ -400,15 +432,17 @@ export default function App() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <StatusBar barStyle="light-content" />
-      <View style={{ flex: 1 }}>{renderMain()}</View>
-      {!showLaunch && <TabBar active={tab} onChange={changeTab} />}
+    <SafeAreaProvider>
+      <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+        <StatusBar barStyle="light-content" />
+        <View style={{ flex: 1 }}>{renderMain()}</View>
+        {!showLaunch && <TabBar active={tab} onChange={changeTab} />}
 
-      {selectedThreat && (
-        <ContactDetailScreen threat={selectedThreat} onClose={() => setSelectedThreat(null)} onRecord={captureSpecimen} />
-      )}
-      {showLaunch && <LaunchScreen onEnter={() => setShowLaunch(false)} />}
-    </View>
+        {selectedThreat && (
+          <ContactDetailScreen threat={selectedThreat} onClose={() => setSelectedThreat(null)} onRecord={captureSpecimen} />
+        )}
+        {showLaunch && <LaunchScreen onEnter={() => setShowLaunch(false)} />}
+      </View>
+    </SafeAreaProvider>
   );
 }

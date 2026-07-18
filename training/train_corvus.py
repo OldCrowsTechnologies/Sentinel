@@ -117,9 +117,12 @@ def _load_wav_mono_16k(path):
 def load_real_dataset(data_dir, win_sec=CLIP_SEC, holdout=None):
     """Walk data_dir, slice each file into win_sec windows, extract features.
 
-    holdout: if set, files whose basename contains this substring are skipped
-    (used to keep a clean held-out real-flyover set out of training).
+    holdout: if set, files whose basename contains ANY of these comma-separated
+    substrings are skipped (used to keep clean held-out real sets out of training
+    -- e.g. "fp02,113155" holds out one Blue Angels recording AND a fixed-wing
+    session so both a generalization-FP check and a regression check stay honest).
     """
+    holds = [h.strip().lower() for h in (holdout.split(",") if holdout else []) if h.strip()]
     paths = []
     for ext in ("wav", "WAV"):
         paths += glob.glob(os.path.join(data_dir, "**", f"*.{ext}"), recursive=True)
@@ -128,7 +131,8 @@ def load_real_dataset(data_dir, win_sec=CLIP_SEC, holdout=None):
     win = int(SR * win_sec)
     skipped = 0
     for p in paths:
-        if holdout and holdout.lower() in os.path.basename(p).lower():
+        bn = os.path.basename(p).lower()
+        if any(h in bn for h in holds):
             continue
         li = _label_from_path(p)
         if li is None:
@@ -283,7 +287,7 @@ def main():
     ap.add_argument("--data", nargs="*", default=[], help="folder(s) of labeled real WAVs")
     ap.add_argument("--per-class", type=int, default=400,
                     help="synthetic clips per class (0 = real only)")
-    ap.add_argument("--holdout", default=None, help="skip real files whose name contains this substring (held-out eval)")
+    ap.add_argument("--holdout", default=None, help="comma-separated substrings; skip real files whose name contains ANY (held-out eval)")
     ap.add_argument("--out", default=OUT_PATH, help="output model path")
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--cap", type=int, default=0,
