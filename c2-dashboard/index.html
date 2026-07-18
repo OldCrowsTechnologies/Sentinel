@@ -21,6 +21,7 @@
   header .spacer{flex:1}
   .chip{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
   .chip b{color:var(--ink)}
+  .chipstrip{display:contents}   /* desktop: transparent; mobile: a scroll strip (see media query) */
   #expiry.warn{color:var(--amber);border-color:var(--amber)}
   .fitbtn{font-size:12px;font-weight:600;color:#04201d;background:var(--teal);border:0;border-radius:20px;padding:6px 14px;cursor:pointer}
   .fitbtn:hover{filter:brightness(1.08)}
@@ -92,18 +93,21 @@
   .badge b{color:var(--teal)}
   /* ── mobile (phone) layout ─────────────────────────────────────────────── */
   @media (max-width: 768px){
-    #app{grid-template-columns:1fr; grid-template-rows:auto 42vh 1fr; height:100dvh}
-    header{grid-column:1; flex-wrap:wrap; gap:8px; padding:8px 12px}
-    header .brand{width:100%; font-size:14px}
+    #app{grid-template-columns:1fr; grid-template-rows:auto 44vh 1fr; height:100dvh}
+    /* header: row 1 = brand + buttons; row 2 = a horizontal-scroll strip of chips */
+    header{grid-column:1; flex-wrap:wrap; gap:6px; padding:8px 10px; align-items:center}
+    header .brand{order:0; flex:1 1 auto; min-width:0; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
     header .spacer{display:none}
-    .chip{font-size:11px; padding:3px 8px}
-    .fitbtn{font-size:11px; padding:7px 12px}
+    .fitbtn{order:1; font-size:11px; padding:6px 10px; white-space:nowrap; flex:0 0 auto}
+    .chipstrip{order:2; flex:1 1 100%; display:flex; flex-wrap:nowrap; overflow-x:auto; gap:6px; padding-bottom:2px; -webkit-overflow-scrolling:touch}
+    .chip{font-size:11px; padding:3px 8px; white-space:nowrap; flex:0 0 auto}
+    #org{max-width:52vw; overflow:hidden; text-overflow:ellipsis}
     #map{grid-row:2}
     aside{grid-row:3; border-left:0; border-top:1px solid var(--line)}
     aside h2{padding:9px 12px}
     .roster{max-height:20vh}
     .row{grid-template-columns:46px 1fr auto; gap:6px; font-size:12px; padding:8px 12px}
-    .badge{font-size:11px; padding:6px 9px}
+    .badge{font-size:11px; padding:6px 9px; top:8px; left:8px; right:8px; max-width:max-content}
     .card{width:auto; max-width:92vw}
     .report-card{width:auto}
     #q-drawbanner{top:auto; bottom:16px}
@@ -129,12 +133,14 @@
 <div id="app" style="display:none">
   <header>
     <div class="brand">CORVUS <b>SENTINEL</b> · C2</div>
-    <span class="chip" id="org">—</span>
     <div class="spacer"></div>
-    <span class="chip" id="fleet">0 units</span>
-    <span class="chip" id="dets">0 detections</span>
-    <span class="chip rf" id="rflinks">0 RF links</span>
-    <span class="chip" id="expiry">demo —</span>
+    <div class="chipstrip">
+      <span class="chip" id="org">—</span>
+      <span class="chip" id="fleet">0 units</span>
+      <span class="chip" id="dets">0 detections</span>
+      <span class="chip rf" id="rflinks">0 RF links</span>
+      <span class="chip" id="expiry">demo —</span>
+    </div>
     <button class="fitbtn" id="fit" title="Zoom to frame all active units">Fit to units</button>
     <button class="fitbtn" id="reportbtn" title="Query detections by time/area and export a report" style="background:var(--gold);color:#1a1207">Query &amp; Export</button>
   </header>
