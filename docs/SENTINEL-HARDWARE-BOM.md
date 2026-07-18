@@ -418,3 +418,39 @@ it deliberately.
   is the whole pitch.
 - **Roof and vehicle** add weatherproofing and power complexity; do them second,
   and ship the vehicle **speed-gated and honest.**
+
+---
+
+## 9. UNIFIED MULTI-MODAL NODE — additions (drone RF + Remote ID + DOA)
+
+> The gunshot node above already carries the brain, mic, LoRa, GPS, power, and
+> enclosure. To make **one device** also do **Bluetooth Remote ID + ExpressLRS/LoRa
+> control-link detection + acoustic drone + direction-finding** (see
+> [SENTINEL-UNIFIED-SENSOR.md](SENTINEL-UNIFIED-SENSOR.md)), add only the parts
+> below. Prices USD, mid-2026 — ✅ confirmed, ≈ verify before ordering.
+
+| Add | Part | Price | Where | Notes |
+|---|---|---:|---|---|
+| **Sub-GHz SDR** (ELRS/LoRa/Crossfire control links) | **Nooelec NESDR SMArt v5** (RTL2832U + R820T2) w/ antenna kit | ≈$36 | [Nooelec](https://www.nooelec.com/store/nesdr-smart.html) / Amazon | Same chip family as the phone path; `apt install rtl-sdr` → `rtl_tcp` |
+| **SMA bulkhead + pigtail** | panel-mount SMA-F → SMA-M, for the RTL-SDR antenna through the enclosure | ≈$8 | Amazon/DigiKey | Outdoor: pair with the brass gland from §3 |
+| **Sub-GHz antenna** | 433/915 MHz whip or the Nooelec telescopic in the kit | incl. | Nooelec kit | Band-appropriate; not the LoRa mesh antenna |
+| **Powered USB hub** | 4-port powered hub (2 A+) | ≈$15 | Amazon | Feeds the SDR (and Kraken) so the Pi USB rail stays clean |
+| **Mic array — seed** | **2nd Adafruit SPH0645** (SEL→VDD vs first's SEL→GND, shared BCLK/WS/DOUT) | $6.95 ✅ | [Adafruit 3421](https://www.adafruit.com/product/3421) | 2-element @48 kHz — seed of DOA/AoA for one wire |
+| **Mic array — real DOA** | **ReSpeaker 6-Mic Array HAT** *or* **miniDSP UMA-8** | ≈$70 / ≈$100 | [Seeed](https://www.seeedstudio.com/ReSpeaker-6-Mic-Circular-Array-kit-for-Raspberry-Pi.html) / [miniDSP](https://www.minidsp.com/products/usb-audio-interface/uma-8-microphone-array) | What GUARD's SRP-PHAT expects; gives usable bearings |
+| **RF direction-finding** *(later)* | **KrakenSDR** + 5× mag-mount whips | ≈$500 | [KrakenRF / Crowd Supply](https://www.crowdsupply.com/krakenrf/krakensdr) | 5-channel coherent RTL2832U → real RF AoA. Only if RSSI trilateration isn't precise enough |
+
+**Cost delta over the base gunshot node:**
+- **Minimum multi-modal (control link + Remote ID + drone acoustic):** **+ ~$60**
+  (NESDR + hub + SMA) — Remote ID is free (onboard BLE), drone acoustic is free (software).
+- **+ acoustic direction-finding:** **+ ~$70–100** (ReSpeaker/UMA-8).
+- **+ real RF direction-finding:** **+ ~$500** (KrakenSDR) — defer until needed.
+
+So a **fully multi-modal fixed node ≈ base ($100–160) + ~$60 = ~$160–220** with
+RSSI-based RF location; **~$230–320** with acoustic DOA; KrakenSDR is an accuracy
+upgrade on top. Assembly steps are in
+[SENTINEL-UNIFIED-SENSOR.md §4](SENTINEL-UNIFIED-SENSOR.md).
+
+**What NOT to buy for the unified node (yet):** KrakenSDR (until RSSI trilateration
+proves insufficient), and any 2.4 GHz-capable SDR (HackRF/Airspy) — the RTL-SDR
+covers the sub-GHz control links (ELRS 900 / Crossfire / FrSky 433); 2.4 GHz
+(DJI OcuSync, Spektrum DSMX, ELRS 2.4) is a separate, later capability.
