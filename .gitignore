@@ -6,6 +6,10 @@ web-build/
 .env
 ios/
 android/
+# ...but DO track the in-house Route C native module source (the prebuild-generated
+# app-level android/ stays ignored; this is hand-written driver source, not generated).
+!native/rtl-embedded/android/
+!native/rtl-embedded/android/**
 training/parity_cases.json
 training/__pycache__/
 *.pyc

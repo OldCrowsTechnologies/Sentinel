@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    SKELETON. Merged into the app manifest at prebuild.
+    The <uses-feature> advertises USB Host; the intent-filter + meta-data let Android
+    offer to launch Sentinel when a matching RTL2832U dongle is attached (optional UX,
+    plan §3.1). The device_filter is additive and only matches our VID/PID table.
+  -->
+  <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+  <application>
+    <activity android:name="com.oldcrows.rtlembedded.UsbAttachShimActivity" android:exported="true">
+      <!-- TODO(native): point this at the app's main activity instead of a shim, or
+           drop the launch-on-attach behavior entirely and rely on in-app enumeration. -->
+      <intent-filter>
+        <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+      </intent-filter>
+      <meta-data
+        android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+        android:resource="@xml/rtl_device_filter" />
+    </activity>
+  </application>
+</manifest>

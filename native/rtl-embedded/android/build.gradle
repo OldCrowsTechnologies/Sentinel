@@ -1,0 +1,39 @@
+// build.gradle -- Expo module build config for the embedded RTL-SDR driver (Route C).
+// SKELETON. This is the shape an Expo native module uses; it is wired into the app
+// only at prebuild (autolinking discovers expo-module.config.json). No changes to the
+// app's package.json/app.json are made by scaffolding.
+//
+// License: MIT (in-house, clean-room). See native/rtl-embedded/README.md.
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+group = 'com.oldcrows.rtlembedded'
+version = '0.0.1'
+
+android {
+  namespace 'com.oldcrows.rtlembedded'
+  compileSdkVersion safeExtGet('compileSdkVersion', 34)
+
+  defaultConfig {
+    minSdkVersion safeExtGet('minSdkVersion', 24) // USB Host API available since API 12; 24 matches app
+    targetSdkVersion safeExtGet('targetSdkVersion', 34)
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+  kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies {
+  // Provided by the host app at prebuild; expo-modules-core supplies Module/ModuleDefinition.
+  implementation project(':expo-modules-core')
+  implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion"
+}
+
+// Fallback if the root project doesn't define safeExtGet (standalone lint).
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}

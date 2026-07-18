@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  USB device filter for known RTL2832U dongles (decimal VID/PID; Android requires
+  decimal here). SKELETON -- keep in sync with RtlIds.KNOWN in RtlUsbDevice.kt.
+  Plan §3.1.
+-->
+<resources>
+  <!-- 0x0BDA / 0x2838  Realtek generic RTL2832U (most NESDR incl. Nano 3) -->
+  <usb-device vendor-id="3034" product-id="10296" />
+  <!-- 0x0BDA / 0x2832  RTL2832U DVB-T variant -->
+  <usb-device vendor-id="3034" product-id="10290" />
+  <!-- 0x0BDA / 0x2831  RTL2831U -->
+  <usb-device vendor-id="3034" product-id="10289" />
+  <!-- TODO(native): add remaining clones from RtlIds.KNOWN as needed. -->
+</resources>

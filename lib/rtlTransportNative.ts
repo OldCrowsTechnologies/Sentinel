@@ -93,10 +93,24 @@ export function createNativeRtlTransport(): RtlTransport | null {
 }
 
 /**
- * Register the native transport if the native module is available. Safe no-op
- * (returns false, leaves the "no module" state) otherwise. Call once at startup.
+ * Register the best available RtlTransport at startup. Preference order:
+ *   1. EMBEDDED (Route C) -- the in-house clean-room USB driver; no companion app,
+ *      no loopback socket. Present only once native/rtl-embedded is prebuild-linked.
+ *   2. COMPANION-APP TCP (Route A) -- react-native-tcp-socket to a local rtl_tcp
+ *      server; the proven path that works today with a native build + driver app.
+ * Safe no-op (returns false, leaves the "no module" state) if neither is present
+ * (Expo Go / managed bundle). Call once at startup.
  */
 export function installRtlTransport(): boolean {
+  // Lazy require so this file has no static edge into the embedded module (which is
+  // android-only + prebuild-linked); mirrors the defensive require pattern above.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { installEmbeddedRtlTransport } = require('./rtlTransportEmbedded');
+    if (installEmbeddedRtlTransport()) return true;
+  } catch {
+    /* embedded module not linked -- fall through to the companion-app TCP path */
+  }
   const t = createNativeRtlTransport();
   if (t) registerRtlTransport(t);
   return t != null;
