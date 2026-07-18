@@ -286,6 +286,10 @@ def main():
     ap.add_argument("--holdout", default=None, help="skip real files whose name contains this substring (held-out eval)")
     ap.add_argument("--out", default=OUT_PATH, help="output model path")
     ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--cap", type=int, default=0,
+                    help="max windows per class (0 = no cap). Undersamples dominant "
+                         "classes (e.g. a large real None/Unknown pool) to parity so "
+                         "they can't bias the model -- the class-balance lever.")
     args = ap.parse_args()
 
     waves, y = [], []
@@ -315,6 +319,24 @@ def main():
     remap = {old: new for new, old in enumerate(present)}
     y = np.array([remap[int(v)] for v in y.tolist()])
     excluded = [LABELS[i] for i in range(len(LABELS)) if i not in present]
+
+    # --- class balance: cap dominant classes so a large real None/Unknown pool
+    # can't swamp the typed classes (which regressed fixed-wing when uncapped). ---
+    if args.cap > 0:
+        rng = np.random.RandomState(args.seed)
+        keep = []
+        for c in range(len(active_labels)):
+            idx = np.where(y == c)[0]
+            if len(idx) > args.cap:
+                idx = rng.choice(idx, args.cap, replace=False)
+            keep.append(idx)
+        keep = np.concatenate(keep)
+        keep.sort()
+        waves = [waves[i] for i in keep]
+        y = y[keep]
+        counts = {active_labels[c]: int(np.sum(y == c)) for c in range(len(active_labels))}
+        print(f"Balanced to cap={args.cap}/class -> {counts}")
+
     print(f"Total clips: {len(waves)} | active classes ({len(active_labels)}): {active_labels}")
     if excluded:
         print(f"Excluded (no data): {excluded}")
