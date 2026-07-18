@@ -40,6 +40,26 @@
   .row .lbl.rf{color:var(--rf)}
   .rfbadge{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.5px;color:#120a26;background:var(--rf);border-radius:4px;padding:1px 5px;margin-right:6px;vertical-align:1px}
   .chip.rf{color:var(--rf)}
+  /* query & export */
+  #report{display:none;position:fixed;inset:0;background:rgba(4,10,16,.62);z-index:60;align-items:center;justify-content:center}
+  .report-card{position:relative;width:540px;max-width:92vw;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .report-card h2{margin:0 0 3px;font-size:18px}
+  .report-card .sub{color:var(--dim);font-size:12px;margin-bottom:16px}
+  .frow{display:flex;gap:10px;margin:8px 0}
+  .frow>div{flex:1}
+  .report-card label{display:block;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}
+  .report-card input[type=datetime-local]{width:100%;padding:9px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-family:var(--mono);font-size:13px}
+  .areabtn{flex:1;padding:9px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--dim);cursor:pointer;font-size:12px}
+  .areabtn.on{border-color:var(--teal);color:var(--teal)}
+  .q-hint{font-size:11px;color:var(--gold);min-height:14px;margin:2px 0}
+  .q-summary{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px;font-size:12px;color:var(--ink);margin:12px 0;min-height:40px;line-height:1.5}
+  .report-actions{display:flex;gap:10px;margin-top:6px}
+  .report-actions button{padding:11px;border:0;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer}
+  .btn-run{flex:1;background:var(--teal);color:#04201d}
+  .btn-export{flex:1;background:var(--gold);color:#1a1207}
+  .btn-export:disabled{opacity:.4;cursor:default}
+  .btn-close2{flex:0 0 84px;background:var(--panel2);border:1px solid var(--line)!important;color:var(--dim)}
+  #q-drawbanner{display:none;position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:70;background:rgba(15,22,32,.95);border:1px solid var(--teal);border-radius:8px;padding:9px 16px;font-size:13px;color:var(--teal)}
   .row .meta{color:var(--dim);font-size:11px}
   .row .cf{font-family:var(--mono);color:var(--dim);text-align:right}
   /* login */
@@ -86,6 +106,7 @@
     <span class="chip rf" id="rflinks">0 RF links</span>
     <span class="chip" id="expiry">demo —</span>
     <button class="fitbtn" id="fit" title="Zoom to frame all active units">Fit to units</button>
+    <button class="fitbtn" id="reportbtn" title="Query detections by time/area and export a report" style="background:var(--gold);color:#1a1207">Query &amp; Export</button>
   </header>
   <div id="map">
     <div class="badge">Fused tracks: <b id="trackcount">0</b> · ≥3 units needed for a fix</div>
@@ -96,6 +117,32 @@
     <h2>Live detections</h2>
     <div class="log" id="log"></div>
   </aside>
+</div>
+
+<div id="q-drawbanner">Click two corners on the map to set the area — <b>Esc</b> to cancel</div>
+<div id="report">
+  <div class="report-card">
+    <h2>Query &amp; Export</h2>
+    <div class="sub">Pull detections by time, area, or both — then export the full report as CSV.</div>
+    <input type="hidden" id="q-area" value="any">
+    <div class="frow">
+      <div><label>From</label><input type="datetime-local" id="q-from"></div>
+      <div><label>To</label><input type="datetime-local" id="q-to"></div>
+    </div>
+    <label>Area</label>
+    <div class="frow">
+      <button class="areabtn on" data-area="any">Anywhere</button>
+      <button class="areabtn" data-area="view">Current map view</button>
+      <button class="areabtn" data-area="draw">Draw box on map</button>
+    </div>
+    <div class="q-hint" id="q-hint"></div>
+    <div class="q-summary" id="q-summary">Set a time range and run the query.</div>
+    <div class="report-actions">
+      <button class="btn-run" id="q-run">Run query</button>
+      <button class="btn-export" id="q-export" disabled>Export CSV</button>
+      <button class="btn-close2" id="q-close">Close</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -174,6 +221,99 @@ $('fit').onclick=()=>{
   pts.forEach(p=>b.extend([p.lon,p.lat]));
   map.fitBounds(b,{padding:90,maxZoom:15,duration:600});
 };
+
+// ── query & export ──────────────────────────────────────────────────────────
+let queryBounds=null;   // {minLon,minLat,maxLon,maxLat} for the draw-box area
+let drawState=null;     // {c1} while capturing a box on the map
+let lastReportRows=[];  // rows from the most recent query (source for CSV export)
+
+const toLocalInput=d=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+function openReport(){
+  const now=new Date();
+  $('q-from').value=toLocalInput(new Date(now.getTime()-2*3600*1000)); // default: last 2h
+  $('q-to').value=toLocalInput(now);
+  $('report').style.display='flex';
+}
+function closeReport(){ $('report').style.display='none'; }
+
+function setArea(mode){
+  $('q-area').value=mode;
+  [...document.querySelectorAll('.areabtn[data-area]')].forEach(b=>b.classList.toggle('on',b.dataset.area===mode));
+  if(mode==='draw'){ startDrawBox(); }
+  else { drawState=null; $('q-drawbanner').style.display='none'; clearQueryArea();
+         $('q-hint').textContent = mode==='view' ? 'Uses the current map viewport when you run the query.' : ''; }
+}
+function startDrawBox(){
+  drawState={c1:null};
+  $('report').style.display='none';               // let clicks reach the map
+  $('q-drawbanner').style.display='block';
+  $('q-drawbanner').innerHTML='Click the <b>first</b> corner on the map — <b>Esc</b> to cancel';
+}
+function onMapClickForDraw(e){
+  if(!drawState) return;
+  const ll=[e.lngLat.lng,e.lngLat.lat];
+  if(!drawState.c1){ drawState.c1=ll; $('q-drawbanner').innerHTML='Click the <b>opposite</b> corner'; return; }
+  const c1=drawState.c1;
+  queryBounds={minLon:Math.min(c1[0],ll[0]),maxLon:Math.max(c1[0],ll[0]),minLat:Math.min(c1[1],ll[1]),maxLat:Math.max(c1[1],ll[1])};
+  drawState=null; $('q-drawbanner').style.display='none';
+  drawQueryArea(); $('report').style.display='flex';
+  $('q-hint').textContent='Box set. Run the query.';
+}
+function drawQueryArea(){
+  if(!map||!queryBounds) return;
+  const {minLon,minLat,maxLon,maxLat}=queryBounds;
+  const ring=[[minLon,minLat],[maxLon,minLat],[maxLon,maxLat],[minLon,maxLat],[minLon,minLat]];
+  map.getSource('query-area').setData(fc([{type:'Feature',geometry:{type:'Polygon',coordinates:[ring]}}]));
+}
+function clearQueryArea(){ queryBounds=null; if(map&&map.getSource('query-area')) map.getSource('query-area').setData(fc([])); }
+function currentAreaBounds(){
+  const mode=$('q-area').value;
+  if(mode==='view'&&map){ const b=map.getBounds(); return {minLon:b.getWest(),minLat:b.getSouth(),maxLon:b.getEast(),maxLat:b.getNorth()}; }
+  if(mode==='draw') return queryBounds; // null if not yet drawn -> treated as anywhere
+  return null;
+}
+async function runReportQuery(){
+  if(!supa||!orgId){ $('q-summary').textContent='Not connected.'; return; }
+  const fromV=$('q-from').value, toV=$('q-to').value;
+  if(!fromV||!toV){ $('q-summary').textContent='Set both a From and To time.'; return; }
+  $('q-summary').textContent='Querying…'; $('q-export').disabled=true;
+  const { data, error } = await supa.from('detections').select('*')
+    .gte('ts',new Date(fromV).toISOString()).lte('ts',new Date(toV).toISOString())
+    .order('ts',{ascending:true}).limit(10000);
+  if(error){ $('q-summary').textContent='Query error: '+error.message; return; }
+  let rows=data||[];
+  const bounds=currentAreaBounds();
+  if(bounds) rows=rows.filter(r=>r.lat!=null&&r.lon!=null&&r.lon>=bounds.minLon&&r.lon<=bounds.maxLon&&r.lat>=bounds.minLat&&r.lat<=bounds.maxLat);
+  lastReportRows=rows;
+  const byLabel={}; for(const r of rows) byLabel[r.label]=(byLabel[r.label]||0)+1;
+  const parts=Object.entries(byLabel).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`);
+  const areaTxt=bounds?`area ${bounds.minLat.toFixed(3)},${bounds.minLon.toFixed(3)} → ${bounds.maxLat.toFixed(3)},${bounds.maxLon.toFixed(3)}`:'anywhere';
+  $('q-summary').innerHTML=`<b>${rows.length}</b> detection(s) · ${areaTxt}<br>${parts.join(' · ')||'—'}`;
+  $('q-export').disabled=rows.length===0;
+}
+function exportReportCsv(){
+  if(!lastReportRows.length) return;
+  const cols=['ts','call_sign','kind','label','confidence','peak_db','band','range_ft','unknown_build','lat','lon','node_id','user_id'];
+  const esc=v=>{ if(v==null) return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  const lines=lastReportRows.map(r=>cols.map(c=>{
+    if(c==='ts') return esc(new Date(r.ts).toISOString());
+    if(c==='call_sign') return esc(csFor(r));
+    return esc(r[c]);
+  }).join(','));
+  const fromV=$('q-from').value, toV=$('q-to').value, bounds=currentAreaBounds();
+  const meta=`# Corvus Sentinel detection report\n# generated,${new Date().toISOString()}\n# range,${fromV},${toV}\n# area,${bounds?JSON.stringify(bounds):'anywhere'}\n# count,${lastReportRows.length}\n`;
+  const csv=meta+cols.join(',')+'\n'+lines.join('\n')+'\n';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=`sentinel-report_${fromV.replace(/[:T]/g,'-')}_to_${toV.replace(/[:T]/g,'-')}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+$('reportbtn').onclick=openReport;
+$('q-close').onclick=closeReport;
+$('q-run').onclick=runReportQuery;
+$('q-export').onclick=exportReportCsv;
+[...document.querySelectorAll('.areabtn[data-area]')].forEach(b=>b.onclick=()=>setArea(b.dataset.area));
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ if(drawState){drawState=null;$('q-drawbanner').style.display='none';$('report').style.display='flex';setArea('any');} else if($('report').style.display==='flex') closeReport(); } });
 async function connect(){
   const code=$('code').value.trim(); const cs=$('callsign').value.trim();
   if(!code){$('err').textContent='Enter your command code.';return;}
@@ -250,6 +390,11 @@ function initMap(){
     map.addLayer({id:'rf',type:'circle',source:'rf',paint:{'circle-radius':7,'circle-color':'#9d7bff','circle-stroke-color':'#140a2e','circle-stroke-width':2}});
     map.addLayer({id:'rf-lbl',type:'symbol',source:'rf',layout:{'text-field':['get','label'],'text-font':['Open Sans Regular'],'text-offset':[0,1.3],'text-size':10},paint:{'text-color':'#cbbcff','text-halo-color':'#0a0618','text-halo-width':1.2}});
     map.on('click','rf',e=>{const p=e.features[0].properties;new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b style="color:#9d7bff">${p.label}</b><br>${p.band||'sub-GHz'} · ${p.peak} dB<br>${p.cs||''}`).addTo(map);});
+    // Query/export area overlay + draw-box capture.
+    map.addSource('query-area',{type:'geojson',data:fc([])});
+    map.addLayer({id:'query-area-fill',type:'fill',source:'query-area',paint:{'fill-color':'#2fd6c4','fill-opacity':0.08}});
+    map.addLayer({id:'query-area-line',type:'line',source:'query-area',paint:{'line-color':'#2fd6c4','line-width':1.5,'line-dasharray':[2,2]}});
+    map.on('click',onMapClickForDraw);
     redraw();
   });
 }
