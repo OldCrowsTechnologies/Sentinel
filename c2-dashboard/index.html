@@ -90,6 +90,24 @@
   .maplibregl-popup-tip{border-top-color:var(--panel2)!important;border-bottom-color:var(--panel2)!important}
   .badge{position:absolute;top:10px;left:10px;z-index:5;background:rgba(15,22,32,.85);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--dim)}
   .badge b{color:var(--teal)}
+  /* ── mobile (phone) layout ─────────────────────────────────────────────── */
+  @media (max-width: 768px){
+    #app{grid-template-columns:1fr; grid-template-rows:auto 42vh 1fr; height:100dvh}
+    header{grid-column:1; flex-wrap:wrap; gap:8px; padding:8px 12px}
+    header .brand{width:100%; font-size:14px}
+    header .spacer{display:none}
+    .chip{font-size:11px; padding:3px 8px}
+    .fitbtn{font-size:11px; padding:7px 12px}
+    #map{grid-row:2}
+    aside{grid-row:3; border-left:0; border-top:1px solid var(--line)}
+    aside h2{padding:9px 12px}
+    .roster{max-height:20vh}
+    .row{grid-template-columns:46px 1fr auto; gap:6px; font-size:12px; padding:8px 12px}
+    .badge{font-size:11px; padding:6px 9px}
+    .card{width:auto; max-width:92vw}
+    .report-card{width:auto}
+    #q-drawbanner{top:auto; bottom:16px}
+  }
 </style>
 </head>
 <body>
