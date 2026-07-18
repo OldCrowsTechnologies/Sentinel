@@ -4,9 +4,9 @@ External work we got permission to use (UWF, Pensacola). Source of truth for wha
 we took, what's deferred, and the honest result of a first integration pass.
 
 **Sources**
-- Code/model: `github.com/mpb63UWF/Vigil` — "GUARD" drone audio detection (⚠️ **no license
-  file** — usage is by direct permission from the owner; get it **in writing** before it
-  ships in a paid product).
+- Code/model: `github.com/mpb63UWF/Vigil` — "GUARD" drone audio detection. No license file,
+  but the **owner has granted permission to use it (incl. commercially) and stated no written
+  terms are needed** (confirmed to Josh, 2026-07). Keep this note as the record of that grant.
 - Data: HuggingFace `geronimobasso/drone-audio-detection-samples` — **MIT licensed** (commercial
   OK w/ attribution). 180,320 clips, binary `label` (0 = background/no-drone ~9 s clips,
   1 = drone ~0.5 s segments), 16 kHz, 6.81 GB.
