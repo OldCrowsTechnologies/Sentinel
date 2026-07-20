@@ -86,7 +86,56 @@ BAND_RATIOS = [
 ]
 N_BAND_RATIOS = len(BAND_RATIOS)
 
-FEATURE_DIM = 2 * N_MELS + N_BAND_RATIOS
+# ---------------------------------------------------------------------------
+# Harmonic / tonality features (2026-07-19) -- the rotor "comb" discriminator.
+# Literature (docs/ACOUSTIC-LITERATURE-REVIEW.md A1: Wu 2022, Kloet 2017,
+# Izquierdo 2020) says a propeller UAV shows an evenly-spaced BLADE-PASS HARMONIC
+# COMB, while our worst confounders -- jet turbines, car A/C compressors, reefer
+# engines, fountain fans -- are BROADBAND machinery without that comb. Mel-energy
+# alone can't see comb-vs-broadband, so we add two explicit handles:
+#   [0] spectral flatness (geo/arith mean over the comb band): tonal comb -> low,
+#       broadband roar -> ~1  (separates drones from jets/fans)
+#   [1] comb strength: max normalized spectral autocorrelation at lags matching
+#       blade-pass spacing (60-300 Hz) -> high when regular harmonics are present
+# Config-gated + EXPORTED in the model JSON (dsp.harmonics), exactly like highPass/
+# stationarity, so old 46-dim models keep working with new dsp.ts and only a
+# retrained model uses these. PARITY-CRITICAL: mirror in lib/dsp.ts (run_parity).
+HARMONICS_ENABLED = os.environ.get("CORVUS_HARMONICS", "1") != "0"  # A/B via env
+HARMONIC_BAND = (50.0, 4000.0)   # frequency span the rotor comb lives in
+COMB_LAG_HZ = (60.0, 300.0)      # plausible blade-pass spacing to search
+N_HARMONIC = 2 if HARMONICS_ENABLED else 0
+
+FEATURE_DIM = 2 * N_MELS + N_BAND_RATIOS + N_HARMONIC
+
+
+def harmonic_features(mean_power, fft_freqs):
+    """[spectral_flatness, comb_strength] over HARMONIC_BAND of the mean power
+    spectrum. Parity-critical -- lib/dsp.ts mirrors this exactly."""
+    eps = 1e-10
+    lo, hi = HARMONIC_BAND
+    mask = (fft_freqs >= lo) & (fft_freqs < hi)
+    band = mean_power[mask]
+    n = len(band)
+    if n < 3:
+        return np.array([1.0, 0.0])
+    # spectral flatness = geometric mean / arithmetic mean
+    gmean = np.exp(np.sum(np.log(band + eps)) / n)
+    amean = np.sum(band) / n + eps
+    flatness = gmean / amean
+    # comb strength = max normalized spectral autocorrelation over blade-pass lags
+    df = fft_freqs[1] - fft_freqs[0]
+    lag_min = max(1, int(round(COMB_LAG_HZ[0] / df)))
+    lag_max = min(n - 1, int(round(COMB_LAG_HZ[1] / df)))
+    mean_b = np.sum(band) / n
+    b = band - mean_b
+    denom = np.sum(b * b) + eps
+    best = 0.0
+    for lag in range(lag_min, lag_max + 1):
+        ac = np.sum(b[:n - lag] * b[lag:]) / denom
+        if ac > best:
+            best = ac
+    comb = best if best > 0.0 else 0.0
+    return np.array([flatness, comb])
 
 # Class labels (index order is the model output order).
 #
@@ -246,7 +295,10 @@ def extract_features(x, sr=SR):
         ratios.append(mean_power[mask].sum() / total)
     ratios = np.array(ratios)
 
-    feat = np.concatenate([mel_mean, mel_std, ratios]).astype(np.float64)
+    parts = [mel_mean, mel_std, ratios]
+    if HARMONICS_ENABLED:
+        parts.append(harmonic_features(mean_power, fft_freqs))
+    feat = np.concatenate(parts).astype(np.float64)
     return feat
 
 

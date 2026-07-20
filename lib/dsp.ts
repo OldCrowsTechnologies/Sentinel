@@ -18,6 +18,9 @@ export interface DspConfig {
   melFilterbank: number[][]; // (nMels, nfft/2+1), exported by the trainer
   highPass?: { enabled: boolean; fc: number; order: number };
   stationarity?: { enabled: boolean; eps: number; minFrames?: number; floor?: number };
+  // Rotor-comb tonality features (see training/corvus_features.harmonic_features).
+  // When enabled, appends [spectralFlatness, combStrength] after the band ratios.
+  harmonics?: { enabled: boolean; band: [number, number]; lagHz: [number, number] };
 }
 
 /**
@@ -238,10 +241,59 @@ export function extractFeatures(samples: ArrayLike<number>, cfg: DspConfig): Flo
     ratios[b] = s / total;
   }
 
-  const out = new Float64Array(2 * nMels + bandRatios.length);
+  // Harmonic / tonality features (rotor comb vs broadband machinery). EXACT
+  // mirror of corvus_features.harmonic_features -- parity-critical. Gated by the
+  // model's dsp.harmonics config so old (46-dim) models still produce 46 dims.
+  const harm = cfg.harmonics;
+  const nHarm = harm && harm.enabled ? 2 : 0;
+
+  const out = new Float64Array(2 * nMels + bandRatios.length + nHarm);
   out.set(melMean, 0);
   out.set(melStd, nMels);
   out.set(ratios, 2 * nMels);
+
+  if (harm && harm.enabled) {
+    const eps = 1e-10;
+    const [loHz, hiHz] = harm.band;
+    const band: number[] = [];
+    for (let k = 0; k < nBins; k++) {
+      const freq = (k * nyq) / (nBins - 1);
+      if (freq >= loHz && freq < hiHz) band.push(meanPower[k]);
+    }
+    const nb = band.length;
+    let flatness = 1;
+    let comb = 0;
+    if (nb >= 3) {
+      let logSum = 0;
+      let sum = 0;
+      for (let i = 0; i < nb; i++) {
+        logSum += Math.log(band[i] + eps);
+        sum += band[i];
+      }
+      const gmean = Math.exp(logSum / nb);
+      const amean = sum / nb + eps;
+      flatness = gmean / amean;
+      const df = nyq / (nBins - 1);
+      const lagMin = Math.max(1, Math.round(harm.lagHz[0] / df));
+      const lagMax = Math.min(nb - 1, Math.round(harm.lagHz[1] / df));
+      const meanB = sum / nb;
+      let denom = eps;
+      for (let i = 0; i < nb; i++) {
+        const d = band[i] - meanB;
+        denom += d * d;
+      }
+      let best = 0;
+      for (let lag = lagMin; lag <= lagMax; lag++) {
+        let ac = 0;
+        for (let i = 0; i + lag < nb; i++) ac += (band[i] - meanB) * (band[i + lag] - meanB);
+        ac /= denom;
+        if (ac > best) best = ac;
+      }
+      comb = best > 0 ? best : 0;
+    }
+    out[2 * nMels + bandRatios.length] = flatness;
+    out[2 * nMels + bandRatios.length + 1] = comb;
+  }
   return out;
 }
 

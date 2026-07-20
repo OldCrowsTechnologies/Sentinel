@@ -40,6 +40,7 @@ from corvus_features import (
     SR, NFFT, HOP, N_MELS, MEL_FB, BAND_RATIOS, FEATURE_DIM, LABELS,
     HIGH_PASS_ENABLED, HIGH_PASS_FC,
     STATIONARITY_ENABLED, STATIONARITY_EPS, STATIONARITY_MIN_FRAMES, STATIONARITY_FLOOR,
+    HARMONICS_ENABLED, HARMONIC_BAND, COMB_LAG_HZ,
     extract_features,
 )
 from corvus_synth import build_synthetic_dataset, CLIP_SEC
@@ -270,6 +271,7 @@ def export_model(clf, mean, scale, Xs, y, active_labels, path):
             "melFilterbank": [[float(v) for v in row] for row in MEL_FB],  # (N_MELS, nbins)
             "highPass": {"enabled": bool(HIGH_PASS_ENABLED), "fc": float(HIGH_PASS_FC), "order": 1},
             "stationarity": {"enabled": bool(STATIONARITY_ENABLED), "eps": float(STATIONARITY_EPS), "minFrames": int(STATIONARITY_MIN_FRAMES), "floor": float(STATIONARITY_FLOOR)},
+            "harmonics": {"enabled": bool(HARMONICS_ENABLED), "band": [float(HARMONIC_BAND[0]), float(HARMONIC_BAND[1])], "lagHz": [float(COMB_LAG_HZ[0]), float(COMB_LAG_HZ[1])]},
         },
         "featureDim": FEATURE_DIM,
         "scaler": {"mean": [float(v) for v in mean], "scale": [float(v) for v in scale]},

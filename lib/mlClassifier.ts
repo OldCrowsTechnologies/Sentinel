@@ -32,6 +32,7 @@ export interface CorvusModel {
     melFilterbank: number[][];
     highPass?: { enabled: boolean; fc: number; order: number };
     stationarity?: { enabled: boolean; eps: number; minFrames?: number; floor?: number };
+    harmonics?: { enabled: boolean; band: [number, number]; lagHz: [number, number] };
   };
   featureDim: number;
   scaler: { mean: number[]; scale: number[] };
@@ -164,6 +165,7 @@ export class DroneClassifier {
       melFilterbank: model.dsp.melFilterbank,
       highPass: model.dsp.highPass, // trained-in high-pass (parity-safe)
       stationarity: model.dsp.stationarity, // trained-in voice/crowd suppression
+      harmonics: model.dsp.harmonics, // trained-in rotor-comb tonality features
     };
   }
 
