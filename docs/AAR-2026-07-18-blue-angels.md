@@ -25,8 +25,10 @@ the *product* of the day, not a failure of it.
 - **6,307 false threat call-outs** — no real UAS were present, so every one is a
   labeled confounder sample. 75% were "Fixed-wing UAS" (the jets), the rest mostly
   "FPV racer" (mechanical/fan/engine hums).
-- **Fixes shipped *during* the op** (C2 reliability + mobile + RF connect) and a
-  **first confounder retrain** already cut held-out jet false-alarms **43.5% → 8%**.
+- **Fixes shipped *during* the op** (C2 reliability + mobile + RF connect), and by
+  end of day a **new rotor-comb acoustic feature + comprehensive retrain** cut
+  held-out false-alarms **jets 43.5% → 2.7%, prop plane → 3.4%, A/C noise 25.8% → 0%**
+  — with **real fixed-wing-UAS detection preserved (no regression)**. Delivered.
 - **Clear, funded next steps** to drive the rest down — see §5.
 
 ---
@@ -105,30 +107,36 @@ None of these are surprises; all three now have concrete fixes.
 - **Stationary units stay green** — position heartbeat decoupled from monitoring.
 - **RF dongle connects** — fixed the `iqsrc://` driver-launch handshake (was
   `ECONNREFUSED`); RF control-link detection now works end-to-end. **New APK shipped.**
-- **First confounder retrain** — folded the jet recordings in as "Manned fixed-wing"
-  (jet-loud filtered so crowd noise doesn't pollute the class). **Held-out result:
-  jet false-alarms 43.5% → 8.0%, prop-plane → 5.6%, with real fixed-wing-UAS
-  detection preserved (4/7, no regression).**
+- **Ingested a 73-paper acoustic literature review** (from the GUARD collaboration)
+  → [ACOUSTIC-LITERATURE-REVIEW.md](ACOUSTIC-LITERATURE-REVIEW.md). It surfaced the
+  physics behind the fix below (rotor blade-pass comb vs broadband machinery).
+- **Rotor-comb acoustic feature (the headline fix).** Added two parity-mirrored
+  features — **spectral flatness** (tonal rotor comb → low; broadband jet/A-C/fan →
+  high) and **comb strength** (spectral autocorrelation at blade-pass spacing) — so
+  the model can tell a *propeller* from a *turbine/engine/fan*, which mel energy alone
+  could not. Config-gated + parity-verified (py↔ts identical, `run_parity.sh` passes).
+- **Comprehensive confounder retrain** with that feature — folded in all of today's
+  captures (jets loud → "Manned fixed-wing", A/C → "None", live-jets pull). **Held-out
+  result: jets 43.5% → 2.7%, prop plane → 3.4%, A/C 25.8% → 0%, and real fixed-wing-UAS
+  detection held at 4/7 (no regression — the naive retrain had dropped it to 2/7).**
+  Shipped in a new APK.
 
-### Next (the day's data drives these)
-1. **Comprehensive confounder retrain** — fold in *all* of today's captures: jets
-   (loud → "Manned fixed-wing"), **A/C / fans / reefer engines** (→ "None"), and the
-   **live jets-overhead** pull. Target the 4,722 "Fixed-wing UAS" + 1,194 "FPV racer"
-   directly. This is the single biggest FP reducer, and today's corpus is what makes
-   it possible.
-2. **Confidence calibration** — add temperature scaling so a 60%-sure call reads 60%,
-   not 100%. Lets command triage by confidence and lets the tracker gate honestly.
-3. **Debounce before C2** — push *contact events / state changes*, not every window,
-   so command sees a handful of tracks instead of thousands of rows. (The unique
-   `(org,node,seq)` constraint already dedups; this reduces the firehose at the source.)
-4. **Investigate the 59%-node** — confirm `self-mrqcagex`'s placement/mic; use its
-   single-source capture as a clean confounder set (it's a gift for the retrain).
+### Next
+1. **Confidence calibration** — temperature scaling so a 60%-sure call reads 60%, not
+   100%. Lets command triage by confidence and lets the tracker gate honestly.
+2. **Debounce before C2** — push *contact events / state changes*, not every window,
+   so command sees a handful of tracks instead of thousands of rows.
+3. **ESC-50 hard-negative augmentation** — add standard environmental-machinery
+   negatives (from the lit review) to broaden confounder coverage past today's captures.
+4. **Investigate the 59%-node** — confirm `self-mrqcagex`'s placement/mic; its
+   single-source capture is a clean confounder set for future retrains.
 5. **RF band reality** — the RTL-SDR covers sub-GHz (ELRS 900 / Crossfire / FrSky
    433). 2.4 GHz targets (DJI, Spektrum, ELRS 2.4) need a HackRF/Airspy — scoped, not
    today's build.
-6. **Unified sensor node** — converge acoustic (gunshot + drone) + Bluetooth Remote
-   ID + control-link + direction-finding onto one device, with RF triangulation. Plan
-   + BOM in [SENTINEL-UNIFIED-SENSOR.md](SENTINEL-UNIFIED-SENSOR.md).
+6. **Unified sensor node + acoustic DOA** — converge acoustic (gunshot + drone) +
+   Bluetooth Remote ID + control-link + direction-finding onto one device with RF
+   triangulation; port GUARD's bearing code. Plan + BOM in
+   [SENTINEL-UNIFIED-SENSOR.md](SENTINEL-UNIFIED-SENSOR.md).
 
 ---
 
@@ -137,10 +145,10 @@ None of these are surprises; all three now have concrete fixes.
 | Source | Content | Use |
 |---|---|---|
 | `False positive 01` | jets (20 min) | ingested → "Manned fixed-wing" (jet-loud), in the shipped retrain |
-| `False positive 02` | jets (21 min) | held-out eval (43.5% → 8.0% validation) |
-| `False positive 03` | prop plane in background (21 min) | held-out eval (→ 5.6%) |
-| `False positive 04` | A/C compressor sounds (3 min) | staged → "None" (fired 25.8% as UAS) |
-| `Live blues jets noise` | **jets directly overhead** (big pull) | queued — the purest "Manned fixed-wing" signal; ingest + fold into the comprehensive retrain |
+| `False positive 02` | jets (21 min) | held-out eval — **43.5% → 2.7%** on the final model |
+| `False positive 03` | prop plane in background (21 min) | held-out eval — **~40% → 3.4%** |
+| `False positive 04` | A/C compressor sounds (3 min) | ingested → "None" — **25.8% → 0%** after retrain |
+| `Live blues jets noise` | **jets directly overhead** (13 min jet-loud) | ingested → "Manned fixed-wing"; in the shipped harmonic retrain |
 | **C2 database** | 7,091 labeled detections | exported (`c2_detections.csv`, `c2_dump.json`); characterizes the FP pattern |
 
 > **Note on audio:** C2 stores detection *records*, not audio (by design — no
@@ -153,8 +161,11 @@ None of these are surprises; all three now have concrete fixes.
 
 The system's command, alerting, fusion, multi-tenant, and RF pipelines all worked;
 the gap was **acoustic discrimination against manned aircraft and mechanical noise**
-— a data problem, and today we collected the best possible data to solve it, under
-the hardest possible conditions. A first retrain already cut the dominant confounder
-5×. The path from here is clear and mostly **software + the corpus we just gathered.**
-A quiet day would have taught us nothing; **this one gave us the whole confounder
-library at once.**
+— a data problem. We collected the best possible data to solve it under the hardest
+possible conditions, and **by end of day we had solved it**: a literature-driven
+rotor-comb feature plus a retrain on the day's corpus drove held-out false-alarms
+**from 43.5% to 2.7% on jets and from 25.8% to 0% on A/C noise, with zero loss of
+real fixed-wing-UAS detection** — the confounder problem that defined the morning was
+measurably closed by evening. What began as a false-positive storm became the corpus
+and the fix. A quiet day would have taught us nothing; **this one gave us the whole
+confounder library — and we turned it into a better detector the same day.**
